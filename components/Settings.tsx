@@ -17,7 +17,7 @@ const CollapsibleSection = ({
 }: { 
   title: string; 
   icon: any; 
-  children: ReactNode; 
+  children?: ReactNode; 
   isOpen: boolean; 
   onToggle: () => void; 
 }) => (
@@ -76,11 +76,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
   const handleUpdateSettings = (newSettings: AppSettings) => {
     setSettings(newSettings);
     saveSettings(newSettings);
-    // Apply theme color
-    document.documentElement.style.setProperty('--primary', newSettings.themeColor);
-    // Theme Mode class toggle is handled in App.tsx via onDataChanged refresh, 
-    // but we can preemptively toggle class for instant feel if needed, 
-    // though App.tsx effect is fast enough usually.
+    // Theme application handled by onDataChanged in App.tsx
     onDataChanged();
   };
 
@@ -94,6 +90,10 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
   // --- Customization Logic ---
   const handleThemeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     handleUpdateSettings({ ...settings, themeColor: e.target.value });
+  };
+
+  const handleSecondaryThemeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleUpdateSettings({ ...settings, secondaryColor: e.target.value });
   };
   
   const toggleThemeMode = () => {
@@ -115,7 +115,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
     reader.onload = (event) => {
         const base64 = event.target?.result as string;
         handleUpdateSettings({ ...settings, logoData: base64 });
-        setStatus({ msg: 'Logo updated successfully.', type: 'success' });
+        setStatus({ msg: 'App logo updated successfully.', type: 'success' });
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -188,7 +188,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
         setStatus({ msg: 'Ledger restored successfully. Refreshing...', type: 'success' });
         // Reload settings to reflect imported state
         setSettings(loadSettings());
-        document.documentElement.style.setProperty('--primary', loadSettings().themeColor);
+        // Theme updates handled by parent refresh
         onDataChanged();
       } else {
         setStatus({ msg: 'Invalid backup file format.', type: 'error' });
@@ -220,12 +220,50 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
         
         {/* User Profile Section */}
         <CollapsibleSection 
-          title="User & Business Profile" 
+          title="User Profile" 
           icon={User} 
           isOpen={openSections['profile']} 
           onToggle={() => toggleSection('profile')}
         >
            <div className="space-y-4 pt-4">
+              {/* Custom Logo Upload */}
+              <div className="flex items-start gap-6 mb-2">
+                 <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Custom App Logo</label>
+                    <div className="flex items-center gap-4">
+                        <div className="h-20 w-20 bg-slate-100 dark:bg-slate-900/50 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-600 shadow-sm overflow-hidden p-1 relative group">
+                            <img src={settings.logoData || "logo.svg"} alt="App Logo" className="h-full w-full object-contain" />
+                            {settings.logoData && (
+                                <button 
+                                    onClick={handleRemoveLogo}
+                                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                                    title="Remove Logo"
+                                >
+                                    <X className="h-6 w-6 text-white" />
+                                </button>
+                            )}
+                        </div>
+                        <div>
+                            <button 
+                                onClick={() => logoInputRef.current?.click()}
+                                className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs py-2 px-3 rounded border border-slate-300 dark:border-slate-600 flex items-center gap-2 mb-1"
+                            >
+                                <ImageIcon className="h-4 w-4" />
+                                Upload Logo
+                            </button>
+                            <p className="text-[10px] text-slate-500">Max 500KB. Displayed in app header.</p>
+                            <input 
+                                type="file" 
+                                ref={logoInputRef} 
+                                onChange={handleLogoUpload} 
+                                className="hidden" 
+                                accept="image/*"
+                            />
+                        </div>
+                    </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Your Name</label>
@@ -292,57 +330,29 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
         >
             <div className="pt-4 space-y-8">
                 
-                {/* Logo and Theme Controls */}
-                <div className="flex flex-col md:flex-row md:items-end gap-8">
-                    {/* Logo Section */}
+                {/* Appearance Controls */}
+                <div className="flex flex-col md:flex-row md:items-end gap-6">
                     <div>
-                         <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">App Logo</label>
-                         <div className="flex items-center gap-4">
-                            <div className="h-20 w-20 bg-slate-100 dark:bg-white rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-600 shadow-sm overflow-hidden p-1 relative group">
-                                <img src={settings.logoData || "logo.png"} alt="App Logo" className="h-full w-full object-contain" />
-                                {settings.logoData && (
-                                    <button 
-                                        onClick={handleRemoveLogo}
-                                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                                        title="Remove Logo"
-                                    >
-                                        <X className="h-6 w-6 text-white" />
-                                    </button>
-                                )}
-                            </div>
-                            <div>
-                                <button 
-                                    onClick={() => logoInputRef.current?.click()}
-                                    className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs py-2 px-3 rounded border border-slate-300 dark:border-slate-600 flex items-center gap-2 mb-1"
-                                >
-                                    <ImageIcon className="h-4 w-4" />
-                                    Upload New
-                                </button>
-                                <p className="text-[10px] text-slate-500">Max size 500KB. PNG/JPG.</p>
-                                <input 
-                                    type="file" 
-                                    ref={logoInputRef} 
-                                    onChange={handleLogoUpload} 
-                                    className="hidden" 
-                                    accept="image/*"
-                                />
-                            </div>
-                         </div>
-                    </div>
-
-                    {/* Appearance Controls */}
-                    <div className="flex items-end gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Primary Accent</label>
+                        <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Primary Accent</label>
                              <input 
                                 type="color" 
                                 value={settings.themeColor}
                                 onChange={handleThemeChange}
                                 className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 h-10 w-24 rounded cursor-pointer p-1"
                             />
-                        </div>
-                        
-                        <div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Secondary Accent (BG)</label>
+                             <input 
+                                type="color" 
+                                value={settings.secondaryColor}
+                                onChange={handleSecondaryThemeChange}
+                                className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 h-10 w-24 rounded cursor-pointer p-1"
+                            />
+                    </div>
+                    
+                    <div>
                              <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Interface Theme</label>
                              <button 
                                 onClick={toggleThemeMode}
@@ -360,7 +370,6 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                                     </>
                                 )}
                              </button>
-                        </div>
                     </div>
                 </div>
                 

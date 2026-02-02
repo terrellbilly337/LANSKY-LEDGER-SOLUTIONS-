@@ -39,11 +39,11 @@ const Reports: React.FC<ReportsProps> = ({ transactions, isDarkMode = true }) =>
         <span className="text-sm text-slate-500 dark:text-slate-400">{transactions.length} Records Analyzed</span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 landscape:grid-cols-2 lg:grid-cols-2 gap-6">
         {/* Pie Chart: Expenses by Category */}
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-lg shadow-sm flex flex-col transition-colors">
           <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold mb-6">Expense Distribution</h3>
-          <div className="h-80 w-full flex-grow">
+          <div className="h-80 landscape:h-64 w-full flex-grow">
              {pieChartData.length > 0 ? (
                <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -82,7 +82,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, isDarkMode = true }) =>
         {/* Line Chart: Balance Over Time */}
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-lg shadow-sm flex flex-col transition-colors">
           <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold mb-6">Net Asset History</h3>
-          <div className="h-80 w-full flex-grow">
+          <div className="h-80 landscape:h-64 w-full flex-grow">
             {lineChartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={lineChartData}>

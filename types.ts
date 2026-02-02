@@ -60,6 +60,7 @@ export interface UserProfile {
 
 export interface AppSettings {
   themeColor: string;
+  secondaryColor: string; // New field for background tint
   themeMode: 'dark' | 'light';
   categories: string[]; // Buy/Sell Categories
   expenseCategories: string[]; // Expense Categories

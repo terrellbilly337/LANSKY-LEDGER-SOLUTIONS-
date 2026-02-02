@@ -89,7 +89,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, isDarkMode }) => {
             </span>
         </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 landscape:grid-cols-3 gap-4 md:gap-6">
         <AccountCard 
           type="primary"
           label="Net Profit (Cash)" 
@@ -111,9 +111,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, isDarkMode }) => {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4">
+      <div className="grid grid-cols-1 landscape:grid-cols-3 lg:grid-cols-3 gap-6 pt-4">
         {/* Main Chart */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700/50">
+        <div className="landscape:col-span-2 lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700/50">
           <div className="flex justify-between items-center mb-6">
               <h3 className="text-slate-800 dark:text-slate-200 font-bold">Cash Flow Trends</h3>
               <button 

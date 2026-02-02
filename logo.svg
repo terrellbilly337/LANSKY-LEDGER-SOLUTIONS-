@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#334155" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+  </defs>
+
+  <!-- Book Base -->
+  <path d="M100 170 C 60 185, 20 170, 20 170 V 190 C 20 190, 60 205, 100 190 C 140 205, 180 190, 180 190 V 170 C 180 170, 140 185, 100 170 Z" fill="#1e293b"/>
+  <path d="M100 170 C 60 185, 20 170, 20 170 L 100 160 L 180 170 C 140 185, 100 170, 100 170" fill="#334155" opacity="0.3"/>
+
+  <!-- Bars -->
+  <rect x="35" y="110" width="30" height="60" rx="2" fill="url(#barGradient)"/>
+  <rect x="85" y="80" width="30" height="90" rx="2" fill="url(#barGradient)"/>
+  <rect x="135" y="40" width="30" height="130" rx="2" fill="url(#barGradient)"/>
+
+  <!-- Arrow -->
+  <path d="M25 140 Q 70 140, 165 35" fill="none" stroke="#4f46e5" stroke-width="12" stroke-linecap="round"/>
+  <path d="M135 35 L 170 30 L 170 70" fill="none" stroke="#4f46e5" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

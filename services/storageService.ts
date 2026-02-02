@@ -1,6 +1,6 @@
 
 import { Transaction, TransactionType, InventoryItem, AppSettings } from '../types';
-import { APP_STORAGE_KEY, INVENTORY_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_PLATFORMS, DEFAULT_THEME_COLOR } from '../constants';
+import { APP_STORAGE_KEY, INVENTORY_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_PLATFORMS, DEFAULT_THEME_COLOR, DEFAULT_SECONDARY_COLOR } from '../constants';
 
 // Helper to generate simple UUIDs locally
 const generateId = (): string => {
@@ -75,6 +75,7 @@ export const loadSettings = (): AppSettings => {
       // Ensure defaults if keys are missing in old data
       return {
         themeColor: parsed.themeColor || DEFAULT_THEME_COLOR,
+        secondaryColor: parsed.secondaryColor || DEFAULT_SECONDARY_COLOR,
         themeMode: parsed.themeMode || 'dark',
         categories: parsed.categories || DEFAULT_CATEGORIES,
         expenseCategories: parsed.expenseCategories || DEFAULT_EXPENSE_CATEGORIES,
@@ -89,6 +90,7 @@ export const loadSettings = (): AppSettings => {
   // Default fresh state
   return {
     themeColor: DEFAULT_THEME_COLOR,
+    secondaryColor: DEFAULT_SECONDARY_COLOR,
     themeMode: 'dark',
     categories: DEFAULT_CATEGORIES,
     expenseCategories: DEFAULT_EXPENSE_CATEGORIES,

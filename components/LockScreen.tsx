@@ -11,7 +11,7 @@ const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, logo }) => {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
-  const imgSrc = logo || 'logo.png';
+  const imgSrc = logo || 'logo.svg';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,8 +39,8 @@ const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, logo }) => {
              <img src={imgSrc} alt="Lansky Logo" className="h-full w-full object-contain" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">LANSKY</h1>
-            <p className="text-slate-500 text-sm uppercase tracking-widest font-semibold">Ledger Solutions</p>
+            <h1 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">LANSKY</h1>
+            <p className="text-slate-600 dark:text-slate-400 text-base uppercase tracking-widest font-bold mt-1">Ledger Solutions</p>
           </div>
         </div>
 

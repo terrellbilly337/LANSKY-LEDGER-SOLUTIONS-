@@ -15,7 +15,7 @@ import { Transaction } from './types';
 // Desktop Sidebar
 const Sidebar = ({ logo }: { logo?: string }) => {
   const location = useLocation();
-  const imgSrc = logo || 'logo.png';
+  const imgSrc = logo || 'logo.svg';
   
   const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
     const isActive = location.pathname === to;
@@ -41,8 +41,8 @@ const Sidebar = ({ logo }: { logo?: string }) => {
           <img src={imgSrc} alt="Logo" className="h-7 w-7 object-contain" />
         </div>
         <div>
-          <h1 className="text-slate-900 dark:text-white font-bold tracking-tight text-lg">LANSKY</h1>
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Ledger Solutions</p>
+          <h1 className="text-slate-950 dark:text-white font-extrabold tracking-tight text-xl">LANSKY</h1>
+          <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-widest font-bold">Ledger Solutions</p>
         </div>
       </div>
       
@@ -71,7 +71,7 @@ const Sidebar = ({ logo }: { logo?: string }) => {
 
 // Mobile Header
 const MobileHeader = ({ logo }: { logo?: string }) => {
-  const imgSrc = logo || 'logo.png';
+  const imgSrc = logo || 'logo.svg';
   return (
     <div className="md:hidden bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex justify-between items-center sticky top-0 z-30 transition-colors duration-300">
       <div className="flex items-center gap-3">
@@ -79,8 +79,8 @@ const MobileHeader = ({ logo }: { logo?: string }) => {
             <img src={imgSrc} alt="Logo" className="h-6 w-6 object-contain" />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-slate-900 dark:text-white font-bold text-lg tracking-tight leading-none">LANSKY</h1>
-            <p className="text-[8px] text-slate-500 uppercase tracking-widest font-semibold leading-none mt-0.5">Ledger Solutions</p>
+            <h1 className="text-slate-950 dark:text-white font-extrabold text-xl tracking-tight leading-none">LANSKY</h1>
+            <p className="text-[10px] text-slate-600 dark:text-slate-400 uppercase tracking-widest font-bold leading-none mt-1">Ledger Solutions</p>
           </div>
       </div>
       <NavLink to="/settings" className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
@@ -139,6 +139,53 @@ const BottomNav = () => {
   );
 };
 
+// Helper to mix colors for tinting
+const hexToRgb = (hex: string) => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? [
+    parseInt(result[1], 16),
+    parseInt(result[2], 16),
+    parseInt(result[3], 16)
+  ] : [0, 0, 0];
+};
+
+const mixColors = (color1: number[], color2: number[], weight: number) => {
+  const w = weight; // weight of color1
+  const r = Math.round(color1[0] * w + color2[0] * (1 - w));
+  const g = Math.round(color1[1] * w + color2[1] * (1 - w));
+  const b = Math.round(color1[2] * w + color2[2] * (1 - w));
+  return `rgb(${r}, ${g}, ${b})`;
+};
+
+const updateTheme = (primary: string, secondary: string) => {
+  const root = document.documentElement;
+  root.style.setProperty('--primary', primary);
+
+  const secRgb = hexToRgb(secondary);
+  const white = [255, 255, 255];
+  const black = [15, 23, 42]; // Slate-900 base for dark mixing
+
+  // Generate Tinted Palette (replacing Slate)
+  // We mix the user's secondary color with white/black to generate the scale
+  // Weights are tuned to mimic Tailwind's Slate scale lightness
+  root.style.setProperty('--bg-50', mixColors(white, secRgb, 0.96));
+  root.style.setProperty('--bg-100', mixColors(white, secRgb, 0.90));
+  root.style.setProperty('--bg-200', mixColors(white, secRgb, 0.82));
+  root.style.setProperty('--bg-300', mixColors(white, secRgb, 0.70));
+  root.style.setProperty('--bg-400', mixColors(white, secRgb, 0.50));
+  
+  // Mid-tones
+  root.style.setProperty('--bg-500', secondary); 
+  
+  // Dark Tones (Mixing with dark base)
+  root.style.setProperty('--bg-600', mixColors(black, secRgb, 0.30)); 
+  root.style.setProperty('--bg-700', mixColors(black, secRgb, 0.50));
+  root.style.setProperty('--bg-800', mixColors(black, secRgb, 0.70));
+  root.style.setProperty('--bg-850', mixColors(black, secRgb, 0.78)); // Custom
+  root.style.setProperty('--bg-900', mixColors(black, secRgb, 0.88));
+  root.style.setProperty('--bg-950', mixColors(black, secRgb, 0.95));
+};
+
 const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLocked, setIsLocked] = useState(true);
@@ -167,7 +214,9 @@ const App: React.FC = () => {
     const settings = loadSettings();
     setLogoData(settings.logoData);
     setThemeMode(settings.themeMode);
-    document.documentElement.style.setProperty('--primary', settings.themeColor);
+    
+    // Apply dynamic colors
+    updateTheme(settings.themeColor, settings.secondaryColor);
   };
 
   const handleAddTransaction = (t: Omit<Transaction, 'id'>) => {
