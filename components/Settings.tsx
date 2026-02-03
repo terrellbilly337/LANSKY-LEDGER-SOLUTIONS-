@@ -4,7 +4,7 @@ import { exportData, importData, loadSettings, saveSettings, clearAllData } from
 import { setPin, hasPin as checkHasPin, verifyPin, removePin } from '../services/authService';
 import { getAppTime, setAppTime, setTimeZone, getCurrentTimeZone } from '../services/timeService';
 import { SUPPORTED_TIMEZONES } from '../constants';
-import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock, FileBadge, HelpCircle, Building, Calendar, Globe } from 'lucide-react';
+import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock, FileBadge, HelpCircle, Building, Calendar, Globe, CalendarRange } from 'lucide-react';
 import { AppSettings, UserProfile } from '../types';
 
 interface SettingsProps {
@@ -144,6 +144,10 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
     setAppTime(newDate);
     setStatus({ msg: 'System time updated successfully', type: 'success' });
     onDataChanged();
+  };
+
+  const handleFiscalStartChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      handleUpdateSettings({ ...settings, fiscalYearStartMonth: parseInt(e.target.value) });
   };
 
   // --- Profile Logic ---
@@ -335,8 +339,89 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
+        {/* Date, Time & Region */}
+        <CollapsibleSection 
+          title="Date, Time & Region" 
+          icon={Calendar} 
+          isOpen={openSections['datetime']} 
+          onToggle={() => toggleSection('datetime')}
+        >
+            <div className="pt-4 space-y-6">
+                <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-100 dark:border-amber-900/50">
+                    <p className="text-sm text-amber-800 dark:text-amber-200 flex gap-2">
+                        <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                        <span>Lansky Ledger uses a strictly internal clock. Changing these settings offsets the time for all records in the app without affecting your device's operating system.</span>
+                    </p>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-2">
+                        <Globe className="h-4 w-4" />
+                        Time Zone
+                    </label>
+                    <select 
+                        value={selectedTimeZone}
+                        onChange={handleTimeZoneChange}
+                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
+                    >
+                        {SUPPORTED_TIMEZONES.map(tz => (
+                            <option key={tz} value={tz}>{tz}</option>
+                        ))}
+                    </select>
+                    <p className="text-[10px] text-slate-400 mt-1">Affects how dates and times are formatted.</p>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-2">
+                        <CalendarRange className="h-4 w-4" />
+                        Fiscal Year Start
+                    </label>
+                    <select 
+                        value={settings.fiscalYearStartMonth || 0}
+                        onChange={handleFiscalStartChange}
+                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
+                    >
+                        <option value={0}>January (Calendar Year)</option>
+                        <option value={1}>February</option>
+                        <option value={2}>March</option>
+                        <option value={3}>April (UK/Common)</option>
+                        <option value={4}>May</option>
+                        <option value={5}>June</option>
+                        <option value={6}>July (AU/US Gov)</option>
+                        <option value={7}>August</option>
+                        <option value={8}>September</option>
+                        <option value={9}>October</option>
+                        <option value={10}>November</option>
+                        <option value={11}>December</option>
+                    </select>
+                    <p className="text-[10px] text-slate-400 mt-1">Determines how quarterly performance reports are grouped.</p>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        System Date & Time
+                    </label>
+                    <div className="flex gap-2">
+                        <input 
+                            type="datetime-local" 
+                            value={dateTimeInput}
+                            onChange={(e) => setDateTimeInput(e.target.value)}
+                            className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
+                        />
+                        <button 
+                            onClick={handleDateTimeSave}
+                            className="bg-[var(--primary)] text-white px-4 py-2 rounded hover:opacity-90 font-medium"
+                        >
+                            Set Time
+                        </button>
+                    </div>
+                     <p className="text-[10px] text-slate-400 mt-1">Manually setting this overrides the real-time clock for data entry.</p>
+                </div>
+            </div>
+        </CollapsibleSection>
         
-        {/* User Profile Section */}
+        {/* ... (Previous Sections: User Profile, Customization, Data, Security, FAQ, Legal) ... */}
         <CollapsibleSection 
           title="User Profile" 
           icon={User} 
@@ -444,70 +529,15 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                 </div>
            </div>
         </CollapsibleSection>
-        
-        {/* Date, Time & Region (New Section) */}
-        <CollapsibleSection 
-          title="Date, Time & Region" 
-          icon={Calendar} 
-          isOpen={openSections['datetime']} 
-          onToggle={() => toggleSection('datetime')}
-        >
-            <div className="pt-4 space-y-6">
-                <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-100 dark:border-amber-900/50">
-                    <p className="text-sm text-amber-800 dark:text-amber-200 flex gap-2">
-                        <AlertCircle className="h-5 w-5 flex-shrink-0" />
-                        <span>Lansky Ledger uses a strictly internal clock. Changing these settings offsets the time for all records in the app without affecting your device's operating system.</span>
-                    </p>
-                </div>
 
-                <div>
-                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-2">
-                        <Globe className="h-4 w-4" />
-                        Time Zone
-                    </label>
-                    <select 
-                        value={selectedTimeZone}
-                        onChange={handleTimeZoneChange}
-                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
-                    >
-                        {SUPPORTED_TIMEZONES.map(tz => (
-                            <option key={tz} value={tz}>{tz}</option>
-                        ))}
-                    </select>
-                    <p className="text-[10px] text-slate-400 mt-1">Affects how dates and times are formatted.</p>
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-2">
-                        <Clock className="h-4 w-4" />
-                        System Date & Time
-                    </label>
-                    <div className="flex gap-2">
-                        <input 
-                            type="datetime-local" 
-                            value={dateTimeInput}
-                            onChange={(e) => setDateTimeInput(e.target.value)}
-                            className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
-                        />
-                        <button 
-                            onClick={handleDateTimeSave}
-                            className="bg-[var(--primary)] text-white px-4 py-2 rounded hover:opacity-90 font-medium"
-                        >
-                            Set Time
-                        </button>
-                    </div>
-                     <p className="text-[10px] text-slate-400 mt-1">Manually setting this overrides the real-time clock for data entry.</p>
-                </div>
-            </div>
-        </CollapsibleSection>
-
-        {/* Customization (Renamed from Visual Theme & Customization) */}
+        {/* Customization */}
         <CollapsibleSection 
           title="Customization" 
           icon={Palette} 
           isOpen={openSections['customization']} 
           onToggle={() => toggleSection('customization')}
         >
+            {/* Same content as before */}
             <div className="pt-4 space-y-8">
                  {/* Company Logo Upload (New) */}
                  <div>
@@ -544,9 +574,8 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                         </div>
                     </div>
                  </div>
-                
-                {/* Appearance Controls */}
-                <div className="flex flex-col md:flex-row md:items-end gap-6">
+                {/* ...Rest of customization (colors, etc)... */}
+                 <div className="flex flex-col md:flex-row md:items-end gap-6">
                     <div>
                         <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Primary Accent</label>
                              <input 
@@ -587,10 +616,9 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                              </button>
                     </div>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {/* Inventory Settings (Moved here per user request for aging threshold) */}
-                    <div className="md:col-span-2 border-t border-slate-200 dark:border-slate-700 pt-6">
+                     <div className="md:col-span-2 border-t border-slate-200 dark:border-slate-700 pt-6">
                         <div className="flex flex-col md:flex-row gap-6">
                             <div className="flex-1">
                                 <label className="flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">
@@ -615,9 +643,8 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                             <div className="flex-1"></div>
                         </div>
                     </div>
-
-                    {/* Buy/Sell Categories */}
-                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                    {/* ... Lists (Cats/Platforms) ... */}
+                     <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
                         <button 
                             onClick={() => toggleSubSection('inventoryCats')}
                             className="w-full flex items-center justify-between p-3 text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -750,10 +777,10 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
         >
             <div className="pt-4">
                 <p className="text-slate-500 dark:text-slate-400 mb-6 text-sm leading-relaxed">
-                    Lansky Ledger operates entirely offline. Your financial data is stored in your browser's local storage.
+                    Lansky Ledger Solutions operates entirely offline. Your financial data is stored in your browser's local storage.
                     Use the tools below to backup your ledger to a JSON file or restore from a previous backup.
                 </p>
-
+                {/* Same data content */}
                 <div className="flex flex-col sm:flex-row gap-4 mb-6">
                     <button 
                     onClick={handleExport}
@@ -797,14 +824,14 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
             </div>
         </CollapsibleSection>
 
-        {/* Security Section */}
+        {/* Security Section (Same) */}
         <CollapsibleSection 
           title="App Security" 
           icon={ShieldCheck} 
           isOpen={openSections['security']} 
           onToggle={() => toggleSection('security')}
         >
-            <div className="pt-4">
+             <div className="pt-4">
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-base font-medium text-slate-700 dark:text-slate-300">PIN Protection Status</h3>
                     {isPinSet ? (
@@ -915,15 +942,17 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           onToggle={() => toggleSection('faq')}
         >
           <div className="pt-4 space-y-4">
+             {/* ... FAQs ... */}
              <FAQItem 
                question="Where is my data stored?"
-               answer="Lansky Ledger uses your device's Local Storage to save all transactions and settings. No data is ever sent to a remote server or cloud. This ensures total privacy but means you are responsible for backups."
+               answer="Lansky Ledger Solutions uses your device's Local Storage to save all transactions and settings. No data is ever sent to a remote server or cloud. This ensures total privacy but means you are responsible for backups."
              />
              <FAQItem 
                question="How do I backup my data?"
-               answer="Go to the 'Data Management' section above and click 'Export / Backup'. This will download a JSON file containing your entire ledger. You can restore this file on any device running Lansky Ledger."
+               answer="Go to the 'Data Management' section above and click 'Export / Backup'. This will download a JSON file containing your entire ledger. You can restore this file on any device running Lansky Ledger Solutions."
              />
-             <FAQItem 
+             {/* ... Other FAQs ... */}
+              <FAQItem 
                question="What if I forget my PIN?"
                answer="Because there is no central server, there is no way to reset a lost PIN without wiping your data. If you lose your PIN, you must perform a factory reset (which deletes all data) to regain access."
              />

@@ -9,6 +9,7 @@ import EntryForm from './components/EntryForm';
 import Settings from './components/Settings';
 import Reports from './components/Reports';
 import LockScreen from './components/LockScreen';
+import PinModal from './components/PinModal';
 import { loadTransactions, saveTransaction, deleteTransaction, loadSettings } from './services/storageService';
 import { hasPin } from './services/authService';
 import { Transaction, UserProfile } from './types';
@@ -42,8 +43,8 @@ const Sidebar = ({ profileImage, userProfile, companyLogo }: { profileImage?: st
           <img src={brandLogo} alt="Logo" className="h-7 w-7 object-contain" />
         </div>
         <div>
-          <h1 className="text-slate-900 dark:text-white font-black tracking-tighter text-2xl">LANSKY</h1>
-          <p className="text-xs text-[var(--primary)] font-bold tracking-widest uppercase mt-0.5">Ledger Solutions</p>
+          <h1 className="text-slate-900 dark:text-white font-black tracking-tighter text-xl">LANSKY LEDGER</h1>
+          <p className="text-xs text-[var(--primary)] font-bold tracking-widest uppercase mt-0.5">Solutions</p>
         </div>
       </div>
       
@@ -90,8 +91,8 @@ const MobileHeader = ({ profileImage, companyLogo }: { profileImage?: string, co
             <img src={brandLogo} alt="Logo" className="h-6 w-6 object-contain" />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-slate-900 dark:text-white font-black text-xl tracking-tighter leading-none">LANSKY</h1>
-            <p className="text-[10px] text-[var(--primary)] font-bold tracking-widest uppercase leading-none mt-1">Ledger Solutions</p>
+            <h1 className="text-slate-900 dark:text-white font-black text-lg tracking-tighter leading-none">LANSKY LEDGER</h1>
+            <p className="text-[10px] text-[var(--primary)] font-bold tracking-widest uppercase leading-none mt-1">Solutions</p>
           </div>
       </div>
       <NavLink to="/settings" className="rounded-full overflow-hidden border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all">
@@ -209,6 +210,10 @@ const App: React.FC = () => {
   const [companyLogoData, setCompanyLogoData] = useState<string | undefined>(undefined);
   const [themeMode, setThemeMode] = useState<'light'|'dark'>('dark');
   const [userProfile, setUserProfile] = useState<UserProfile | undefined>(undefined);
+  
+  // PIN Deletion Logic
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     refreshData();
@@ -244,10 +249,26 @@ const App: React.FC = () => {
   };
 
   const handleDeleteTransaction = (id: string) => {
-    if (window.confirm('Are you sure you want to scrub this record?')) {
-      deleteTransaction(id);
-      refreshData();
+    // Check if PIN is set
+    if (hasPin()) {
+        if (window.confirm('Are you sure you want to scrub this record?')) {
+            setPendingDeleteId(id);
+            setShowPinModal(true);
+        }
+    } else {
+        if (window.confirm('Are you sure you want to scrub this record?')) {
+            deleteTransaction(id);
+            refreshData();
+        }
     }
+  };
+
+  const onPinSuccess = () => {
+      if (pendingDeleteId) {
+          deleteTransaction(pendingDeleteId);
+          refreshData();
+          setPendingDeleteId(null);
+      }
   };
 
   if (isLoading) {
@@ -278,6 +299,13 @@ const App: React.FC = () => {
         </main>
         
         <BottomNav />
+        
+        <PinModal 
+            isOpen={showPinModal} 
+            onClose={() => { setShowPinModal(false); setPendingDeleteId(null); }}
+            onSuccess={onPinSuccess}
+            title="Confirm Deletion"
+        />
       </div>
     </HashRouter>
   );

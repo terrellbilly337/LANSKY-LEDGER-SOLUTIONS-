@@ -2,6 +2,7 @@
 export enum TransactionType {
   CREDIT = 'CREDIT', // Sale
   DEBIT = 'DEBIT',   // Purchase/Expense
+  REFUND = 'REFUND', // Return/Reversal
 }
 
 export type InventoryStatus = 'IN_STOCK' | 'SOLD';
@@ -10,22 +11,27 @@ export interface InventoryItem {
   id: string;
   name: string;
   category: string;
-  platform?: string; // New field
+  platform?: string; 
   quantity: number;
   costPerUnitCents: number;
   dateAcquired: string;
   status: InventoryStatus;
   linkedTransactionId?: string;
+  imageData?: string; // Base64 string for item photo
+  
+  // Fields for Sold History snapshot
+  soldPriceCents?: number; 
+  soldDate?: string;
 }
 
 export interface Transaction {
   id: string;
   description: string;
-  amountCents: number; // Stored as integer to avoid floating point errors
+  amountCents: number; // Stored as integer
   type: TransactionType;
   date: string; // ISO string
   category: string;
-  platform?: string; // New field
+  platform?: string;
 }
 
 export interface LedgerSummary {
@@ -60,26 +66,28 @@ export interface UserProfile {
 
 export interface TimeSettings {
   timeZone: string;
-  offsetMs: number; // Difference between real Date.now() and User set time
+  offsetMs: number; 
 }
 
 export interface AppSettings {
   themeColor: string;
-  secondaryColor: string; // New field for background tint
+  secondaryColor: string; 
   themeMode: 'dark' | 'light';
-  inventoryAgingThreshold: number; // Days before notifying (30, 60, 90)
-  categories: string[]; // Buy/Sell Categories
-  expenseCategories: string[]; // Expense Categories
+  inventoryAgingThreshold: number; 
+  fiscalYearStartMonth: number; // 0 (Jan) - 11 (Dec)
+  categories: string[]; 
+  expenseCategories: string[]; 
   platforms: string[];
   userProfile: UserProfile;
-  logoData?: string; // Base64 encoded image string (Profile Picture)
-  companyLogoData?: string; // Base64 encoded image string (Company Logo)
+  logoData?: string; 
+  companyLogoData?: string; 
   timeSettings: TimeSettings;
 }
 
 export interface QuarterlyReport {
   year: number;
-  quarter: number; // 1, 2, 3, 4
+  quarter: number; // 1, 2, 3, 4 based on custom start
+  label: string; // e.g., "Q1 2024"
   totalIncomeCents: number;
   totalExpenseCents: number;
   netProfitCents: number;

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { verifyPin } from '../services/authService';
 import { Lock, ChevronRight } from 'lucide-react';
@@ -39,8 +40,8 @@ const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, logo }) => {
              <img src={imgSrc} alt="Lansky Logo" className="h-full w-full object-contain" />
           </div>
           <div>
-            <h1 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">LANSKY</h1>
-            <p className="text-slate-600 dark:text-slate-400 text-base uppercase tracking-widest font-bold mt-1">Ledger Solutions</p>
+            <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">LANSKY LEDGER</h1>
+            <p className="text-slate-600 dark:text-slate-400 text-sm uppercase tracking-widest font-bold mt-1">Solutions</p>
           </div>
         </div>
 
