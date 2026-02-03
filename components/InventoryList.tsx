@@ -1,14 +1,22 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { InventoryItem } from '../types';
 import { formatCurrency } from '../services/financeService';
 import { loadInventory, deleteInventoryItem, loadSettings } from '../services/storageService';
-import { Search, Trash2, Package, Filter, AlertCircle, LayoutList } from 'lucide-react';
+import { Search, Trash2, Package, Filter, AlertCircle, LayoutList, ArrowUp, ArrowDown } from 'lucide-react';
+import { formatAppDisplayDate } from '../services/timeService';
 
 const InventoryList: React.FC = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [filter, setFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [platformFilter, setPlatformFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  
+  // Sorting state
+  const [sortKey, setSortKey] = useState<'dateAcquired' | 'costPerUnitCents'>('dateAcquired');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
@@ -46,11 +54,12 @@ const InventoryList: React.FC = () => {
   }, [inventory, agingThreshold]);
 
   const filteredData = useMemo(() => {
-    return inventory.filter(item => {
+    let result = inventory.filter(item => {
       const matchesSearch = item.name.toLowerCase().includes(filter.toLowerCase()) || 
                             item.category.toLowerCase().includes(filter.toLowerCase());
       const matchesCategory = categoryFilter === 'ALL' || item.category === categoryFilter;
       const matchesPlatform = platformFilter === 'ALL' || item.platform === platformFilter;
+      const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter;
       
       let matchesView = true;
       if (view === 'DEAD_STOCK') {
@@ -58,9 +67,28 @@ const InventoryList: React.FC = () => {
           matchesView = item.status === 'IN_STOCK' && daysHeld > agingThreshold;
       }
 
-      return matchesSearch && matchesCategory && matchesPlatform && matchesView;
-    }).sort((a, b) => new Date(b.dateAcquired).getTime() - new Date(a.dateAcquired).getTime());
-  }, [inventory, filter, categoryFilter, platformFilter, view, agingThreshold]);
+      return matchesSearch && matchesCategory && matchesPlatform && matchesStatus && matchesView;
+    });
+
+    // Apply Sorting
+    result.sort((a, b) => {
+        let valA, valB;
+
+        if (sortKey === 'dateAcquired') {
+            valA = new Date(a.dateAcquired).getTime();
+            valB = new Date(b.dateAcquired).getTime();
+        } else {
+            valA = a.costPerUnitCents;
+            valB = b.costPerUnitCents;
+        }
+
+        if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+        if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    return result;
+  }, [inventory, filter, categoryFilter, platformFilter, statusFilter, view, agingThreshold, sortKey, sortOrder]);
 
   return (
     <div className="space-y-4">
@@ -100,26 +128,38 @@ const InventoryList: React.FC = () => {
              </button>
          </div>
          
-         <div className="bg-white dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row gap-2">
-            <div className="relative flex-grow">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input 
-                type="text" 
-                placeholder="Search inventory..." 
-                className="w-full bg-transparent text-slate-900 dark:text-slate-100 px-3 py-2 pl-9 text-sm focus:outline-none"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                />
+         <div className="bg-white dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col gap-2">
+            <div className="flex gap-2">
+                <div className="relative flex-grow">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input 
+                    type="text" 
+                    placeholder="Search inventory..." 
+                    className="w-full bg-transparent text-slate-900 dark:text-slate-100 px-3 py-2 pl-9 text-sm focus:outline-none"
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    />
+                </div>
+                <button 
+                    onClick={() => setShowFilters(!showFilters)}
+                    className={`md:hidden p-2 rounded-lg flex items-center justify-center ${showFilters ? 'bg-slate-100 dark:bg-slate-700' : ''}`}
+                >
+                    <Filter className="h-5 w-5 text-slate-500" />
+                </button>
             </div>
-             <button 
-                onClick={() => setShowFilters(!showFilters)}
-                className={`md:hidden p-2 rounded-lg flex items-center justify-center ${showFilters ? 'bg-slate-100 dark:bg-slate-700' : ''}`}
-            >
-                <Filter className="h-5 w-5 text-slate-500" />
-            </button>
 
-             {/* Desktop Filters */}
-             <div className="hidden md:flex gap-2">
+             {/* Filters Row */}
+             <div className={`flex flex-col md:flex-row gap-2 ${showFilters ? 'flex' : 'hidden md:flex'}`}>
+                 <select 
+                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[var(--primary)]"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                    <option value="ALL">All Statuses</option>
+                    <option value="IN_STOCK">In Stock</option>
+                    <option value="SOLD">Sold</option>
+                </select>
+
                  <select 
                     className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[var(--primary)]"
                     value={categoryFilter}
@@ -141,34 +181,26 @@ const InventoryList: React.FC = () => {
                     <option key={p} value={p}>{p}</option>
                     ))}
                 </select>
+
+                {/* Sort Controls */}
+                <div className="flex gap-2 ml-auto">
+                    <select 
+                        className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[var(--primary)]"
+                        value={sortKey}
+                        onChange={(e) => setSortKey(e.target.value as any)}
+                    >
+                        <option value="dateAcquired">Sort: Date</option>
+                        <option value="costPerUnitCents">Sort: Amount</option>
+                    </select>
+                    <button 
+                        onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                    >
+                        {sortOrder === 'asc' ? <ArrowUp className="h-4 w-4 text-slate-500" /> : <ArrowDown className="h-4 w-4 text-slate-500" />}
+                    </button>
+                </div>
              </div>
          </div>
-
-         {/* Mobile Filters Collapsible */}
-        {showFilters && (
-            <div className="md:hidden grid grid-cols-2 gap-2 animate-fade-in">
-                <select 
-                    className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg px-3 py-3 text-sm focus:outline-none"
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value)}
-                >
-                    <option value="ALL">All Categories</option>
-                    {availableCategories.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                    ))}
-                </select>
-                <select 
-                    className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg px-3 py-3 text-sm focus:outline-none"
-                    value={platformFilter}
-                    onChange={(e) => setPlatformFilter(e.target.value)}
-                >
-                    <option value="ALL">All Platforms</option>
-                    {availablePlatforms.map(p => (
-                    <option key={p} value={p}>{p}</option>
-                    ))}
-                </select>
-            </div>
-        )}
       </div>
 
        {/* Mobile List View (Cards) */}
@@ -247,7 +279,7 @@ const InventoryList: React.FC = () => {
                 return (
                 <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="font-mono text-slate-600 dark:text-slate-400">{new Date(item.dateAcquired).toLocaleDateString()}</div>
+                      <div className="font-mono text-slate-600 dark:text-slate-400">{formatAppDisplayDate(item.dateAcquired)}</div>
                       {isAging && (
                           <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-bold mt-1">
                               <AlertCircle className="h-3 w-3" />

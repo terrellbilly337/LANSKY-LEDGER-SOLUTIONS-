@@ -1,7 +1,9 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { Transaction, LedgerSummary, InventoryItem, InventorySummary } from '../types';
 import { calculateSummary, formatCurrency, getChartData, calculateInventorySummary } from '../services/financeService';
 import { loadInventory, loadSettings } from '../services/storageService';
+import { getAppTime, formatAppDisplayDate } from '../services/timeService';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Package, TrendingUp, Wallet, ArrowRight, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -82,8 +84,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, isDarkMode }) => {
     setInventory(loadedInventory);
     setAgingThreshold(settings.inventoryAgingThreshold);
 
-    // Calculate aging items
-    const now = new Date().getTime();
+    // Calculate aging items using App Time
+    const now = getAppTime().getTime();
     const aging = loadedInventory.filter(item => {
         if (item.status !== 'IN_STOCK') return false;
         const daysHeld = Math.floor((now - new Date(item.dateAcquired).getTime()) / (1000 * 60 * 60 * 24));
@@ -99,7 +101,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, isDarkMode }) => {
         <div className="flex items-center justify-between px-1">
             <h2 className="text-xl font-bold text-slate-800 dark:text-white">Accounts & Overview</h2>
             <span className="text-xs font-medium text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
-                {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                {formatAppDisplayDate(getAppTime())}
             </span>
         </div>
 

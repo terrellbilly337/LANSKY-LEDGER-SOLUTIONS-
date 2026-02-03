@@ -1,6 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { TransactionType } from '../types';
 import { loadSettings } from '../services/storageService';
+import { getAppDateString } from '../services/timeService';
 import { Save, TrendingUp, DollarSign, Box } from 'lucide-react';
 import { saveInventoryItem } from '../services/storageService';
 
@@ -21,7 +23,8 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
   // Common
   const [description, setDescription] = useState('');
   const [amountStr, setAmountStr] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  // Use getAppDateString to set the default value based on App Time settings
+  const [date, setDate] = useState(getAppDateString());
   
   // Inventory Specific
   const [itemName, setItemName] = useState('');
@@ -64,6 +67,7 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
       return;
     }
     const amountCents = Math.round(amountFloat * 100);
+    // Construct valid ISO string from YYYY-MM-DD input
     const dateIso = new Date(date).toISOString();
 
     let transactionData: any = {
@@ -128,6 +132,8 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
     setItemName('');
     setAmountStr('');
     setQuantity(1);
+    // Reset date to current app time
+    setDate(getAppDateString());
   };
 
   return (

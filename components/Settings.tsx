@@ -2,7 +2,9 @@
 import React, { useRef, useState, useEffect, ReactNode } from 'react';
 import { exportData, importData, loadSettings, saveSettings, clearAllData } from '../services/storageService';
 import { setPin, hasPin as checkHasPin, verifyPin, removePin } from '../services/authService';
-import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock, FileBadge, HelpCircle, Building } from 'lucide-react';
+import { getAppTime, setAppTime, setTimeZone, getCurrentTimeZone } from '../services/timeService';
+import { SUPPORTED_TIMEZONES } from '../constants';
+import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock, FileBadge, HelpCircle, Building, Calendar, Globe } from 'lucide-react';
 import { AppSettings, UserProfile } from '../types';
 
 interface SettingsProps {
@@ -53,6 +55,27 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
   // Settings State
   const [settings, setSettings] = useState<AppSettings>(loadSettings());
   
+  // Time Settings State
+  const [selectedTimeZone, setSelectedTimeZone] = useState(getCurrentTimeZone());
+  // Date/Time input needs format: YYYY-MM-DDTHH:MM
+  const formatForInput = (date: Date) => {
+    const pad = (n: number) => n < 10 ? '0' + n : n;
+    return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) + "T" + pad(date.getHours()) + ":" + pad(date.getMinutes());
+  };
+  const [dateTimeInput, setDateTimeInput] = useState(formatForInput(getAppTime()));
+
+  // Update live clock in settings
+  useEffect(() => {
+    const timer = setInterval(() => {
+       // Only update if not currently editing (basic UX handling)
+       const activeElement = document.activeElement;
+       if (activeElement?.tagName !== 'INPUT' || activeElement?.getAttribute('type') !== 'datetime-local') {
+          // Optional: You might want to show a live clock somewhere, but updating input value while user types is bad.
+       }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+  
   // Inputs for lists
   const [newCategory, setNewCategory] = useState('');
   const [newExpenseCategory, setNewExpenseCategory] = useState('');
@@ -62,14 +85,26 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     'profile': false,
     'customization': false,
+    'datetime': false, // New
     'data': false,
     'security': false,
     'faq': false,
     'legal': false
   });
 
+  // Sub-Accordion State for Lists
+  const [openSubSections, setOpenSubSections] = useState<Record<string, boolean>>({
+    'inventoryCats': false,
+    'expenseCats': false,
+    'platforms': false
+  });
+
   const toggleSection = (key: string) => {
     setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleSubSection = (key: string) => {
+    setOpenSubSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   // Security State
@@ -87,6 +122,27 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
     setSettings(newSettings);
     saveSettings(newSettings);
     // Theme application handled by onDataChanged in App.tsx
+    onDataChanged();
+  };
+  
+  // --- Time Logic ---
+  const handleTimeZoneChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newZone = e.target.value;
+    setSelectedTimeZone(newZone);
+    setTimeZone(newZone);
+    setStatus({ msg: `Time Zone set to ${newZone}`, type: 'success' });
+    onDataChanged();
+  };
+
+  const handleDateTimeSave = () => {
+    if (!dateTimeInput) return;
+    const newDate = new Date(dateTimeInput);
+    if (isNaN(newDate.getTime())) {
+        setStatus({ msg: 'Invalid Date/Time', type: 'error' });
+        return;
+    }
+    setAppTime(newDate);
+    setStatus({ msg: 'System time updated successfully', type: 'success' });
     onDataChanged();
   };
 
@@ -340,7 +396,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                       name="name"
                       value={settings.userProfile.name}
                       onChange={handleProfileChange}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-200 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
                    />
                 </div>
                 <div>
@@ -350,7 +406,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                       name="businessName"
                       value={settings.userProfile.businessName}
                       onChange={handleProfileChange}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-200 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
                    />
                 </div>
               </div>
@@ -362,7 +418,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                       name="email"
                       value={settings.userProfile.email}
                       onChange={handleProfileChange}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-200 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
                    />
                 </div>
                 <div>
@@ -372,7 +428,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                       name="phone"
                       value={settings.userProfile.phone}
                       onChange={handleProfileChange}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-200 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
                    />
                 </div>
               </div>
@@ -383,12 +439,68 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                       rows={3}
                       value={settings.userProfile.notes}
                       onChange={handleProfileChange}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-200 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
                    />
                 </div>
            </div>
         </CollapsibleSection>
         
+        {/* Date, Time & Region (New Section) */}
+        <CollapsibleSection 
+          title="Date, Time & Region" 
+          icon={Calendar} 
+          isOpen={openSections['datetime']} 
+          onToggle={() => toggleSection('datetime')}
+        >
+            <div className="pt-4 space-y-6">
+                <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-100 dark:border-amber-900/50">
+                    <p className="text-sm text-amber-800 dark:text-amber-200 flex gap-2">
+                        <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                        <span>Lansky Ledger uses a strictly internal clock. Changing these settings offsets the time for all records in the app without affecting your device's operating system.</span>
+                    </p>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-2">
+                        <Globe className="h-4 w-4" />
+                        Time Zone
+                    </label>
+                    <select 
+                        value={selectedTimeZone}
+                        onChange={handleTimeZoneChange}
+                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
+                    >
+                        {SUPPORTED_TIMEZONES.map(tz => (
+                            <option key={tz} value={tz}>{tz}</option>
+                        ))}
+                    </select>
+                    <p className="text-[10px] text-slate-400 mt-1">Affects how dates and times are formatted.</p>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        System Date & Time
+                    </label>
+                    <div className="flex gap-2">
+                        <input 
+                            type="datetime-local" 
+                            value={dateTimeInput}
+                            onChange={(e) => setDateTimeInput(e.target.value)}
+                            className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
+                        />
+                        <button 
+                            onClick={handleDateTimeSave}
+                            className="bg-[var(--primary)] text-white px-4 py-2 rounded hover:opacity-90 font-medium"
+                        >
+                            Set Time
+                        </button>
+                    </div>
+                     <p className="text-[10px] text-slate-400 mt-1">Manually setting this overrides the real-time clock for data entry.</p>
+                </div>
+            </div>
+        </CollapsibleSection>
+
         {/* Visual Theme & Customization */}
         <CollapsibleSection 
           title="Visual Theme & Customization" 
@@ -397,7 +509,6 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           onToggle={() => toggleSection('customization')}
         >
             <div className="pt-4 space-y-8">
-
                  {/* Company Logo Upload (New) */}
                  <div>
                     <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Company Logo (Replaces default icon)</label>
@@ -505,92 +616,125 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                     </div>
 
                     {/* Buy/Sell Categories */}
-                    <div>
-                        <h3 className="text-slate-800 dark:text-slate-200 font-medium mb-3 flex items-center gap-2 text-sm uppercase tracking-wide">
-                            <List className="h-4 w-4 text-emerald-500" /> Inventory Categories
-                        </h3>
-                        <div className="flex gap-2 mb-3">
-                            <input 
-                                type="text" 
-                                className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 flex-1 text-sm text-slate-900 dark:text-slate-200 focus:border-[var(--primary)] focus:outline-none"
-                                placeholder="Add Category"
-                                value={newCategory}
-                                onChange={(e) => setNewCategory(e.target.value)}
-                            />
-                            <button onClick={handleAddCategory} className="bg-[var(--primary)] text-white p-1 rounded hover:opacity-90">
-                                <Plus className="h-4 w-4" />
-                            </button>
-                        </div>
-                        <ul className="max-h-40 overflow-y-auto space-y-1 bg-slate-100 dark:bg-slate-900/50 p-2 rounded border border-slate-200 dark:border-slate-700/50">
-                            {settings.categories.map(c => (
-                                <li key={c} className="flex justify-between items-center text-sm text-slate-600 dark:text-slate-400">
-                                    <span>{c}</span>
-                                    {c !== 'Inventory Source' && (
-                                        <button onClick={() => handleDeleteCategory(c)} className="text-slate-400 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400">
-                                            <Trash2 className="h-3 w-3" />
-                                        </button>
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
+                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                        <button 
+                            onClick={() => toggleSubSection('inventoryCats')}
+                            className="w-full flex items-center justify-between p-3 text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        >
+                            <span className="text-slate-800 dark:text-slate-200 font-medium flex items-center gap-2 text-sm uppercase tracking-wide">
+                                <List className="h-4 w-4 text-emerald-500" /> Inventory Categories
+                            </span>
+                            {openSubSections['inventoryCats'] ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                        </button>
+                        
+                        {openSubSections['inventoryCats'] && (
+                            <div className="p-3 pt-0 border-t border-slate-200 dark:border-slate-700/50 mt-2">
+                                <div className="flex gap-2 mb-3 mt-3">
+                                    <input 
+                                        type="text" 
+                                        className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 flex-1 text-sm text-slate-900 dark:text-slate-200 focus:border-[var(--primary)] focus:outline-none"
+                                        placeholder="Add Category"
+                                        value={newCategory}
+                                        onChange={(e) => setNewCategory(e.target.value)}
+                                    />
+                                    <button onClick={handleAddCategory} className="bg-[var(--primary)] text-white p-1 rounded hover:opacity-90">
+                                        <Plus className="h-4 w-4" />
+                                    </button>
+                                </div>
+                                <ul className="max-h-40 overflow-y-auto space-y-1 bg-white dark:bg-slate-950 p-2 rounded border border-slate-200 dark:border-slate-700/50">
+                                    {settings.categories.map(c => (
+                                        <li key={c} className="flex justify-between items-center text-sm text-slate-600 dark:text-slate-400">
+                                            <span>{c}</span>
+                                            {c !== 'Inventory Source' && (
+                                                <button onClick={() => handleDeleteCategory(c)} className="text-slate-400 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400">
+                                                    <Trash2 className="h-3 w-3" />
+                                                </button>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                     </div>
 
                     {/* Expense Categories */}
-                    <div>
-                        <h3 className="text-slate-800 dark:text-slate-200 font-medium mb-3 flex items-center gap-2 text-sm uppercase tracking-wide">
-                            <List className="h-4 w-4 text-rose-500" /> Expense Categories
-                        </h3>
-                         <div className="flex gap-2 mb-3">
-                            <input 
-                                type="text" 
-                                className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 flex-1 text-sm text-slate-900 dark:text-slate-200 focus:border-[var(--primary)] focus:outline-none"
-                                placeholder="Add Expense"
-                                value={newExpenseCategory}
-                                onChange={(e) => setNewExpenseCategory(e.target.value)}
-                            />
-                            <button onClick={handleAddExpenseCategory} className="bg-[var(--primary)] text-white p-1 rounded hover:opacity-90">
-                                <Plus className="h-4 w-4" />
-                            </button>
-                        </div>
-                         <ul className="max-h-40 overflow-y-auto space-y-1 bg-slate-100 dark:bg-slate-900/50 p-2 rounded border border-slate-200 dark:border-slate-700/50">
-                            {settings.expenseCategories.map(c => (
-                                <li key={c} className="flex justify-between items-center text-sm text-slate-600 dark:text-slate-400">
-                                    <span>{c}</span>
-                                    <button onClick={() => handleDeleteExpenseCategory(c)} className="text-slate-400 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400">
-                                        <Trash2 className="h-3 w-3" />
+                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                        <button 
+                            onClick={() => toggleSubSection('expenseCats')}
+                            className="w-full flex items-center justify-between p-3 text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        >
+                            <span className="text-slate-800 dark:text-slate-200 font-medium flex items-center gap-2 text-sm uppercase tracking-wide">
+                                <List className="h-4 w-4 text-rose-500" /> Expense Categories
+                            </span>
+                            {openSubSections['expenseCats'] ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                        </button>
+
+                         {openSubSections['expenseCats'] && (
+                            <div className="p-3 pt-0 border-t border-slate-200 dark:border-slate-700/50 mt-2">
+                                <div className="flex gap-2 mb-3 mt-3">
+                                    <input 
+                                        type="text" 
+                                        className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 flex-1 text-sm text-slate-900 dark:text-slate-200 focus:border-[var(--primary)] focus:outline-none"
+                                        placeholder="Add Expense"
+                                        value={newExpenseCategory}
+                                        onChange={(e) => setNewExpenseCategory(e.target.value)}
+                                    />
+                                    <button onClick={handleAddExpenseCategory} className="bg-[var(--primary)] text-white p-1 rounded hover:opacity-90">
+                                        <Plus className="h-4 w-4" />
                                     </button>
-                                </li>
-                            ))}
-                        </ul>
+                                </div>
+                                <ul className="max-h-40 overflow-y-auto space-y-1 bg-white dark:bg-slate-950 p-2 rounded border border-slate-200 dark:border-slate-700/50">
+                                    {settings.expenseCategories.map(c => (
+                                        <li key={c} className="flex justify-between items-center text-sm text-slate-600 dark:text-slate-400">
+                                            <span>{c}</span>
+                                            <button onClick={() => handleDeleteExpenseCategory(c)} className="text-slate-400 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400">
+                                                <Trash2 className="h-3 w-3" />
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                     </div>
 
                     {/* Platforms */}
-                    <div>
-                         <h3 className="text-slate-800 dark:text-slate-200 font-medium mb-3 flex items-center gap-2 text-sm uppercase tracking-wide">
-                            <List className="h-4 w-4 text-indigo-500" /> Platforms
-                        </h3>
-                        <div className="flex gap-2 mb-3">
-                            <input 
-                                type="text" 
-                                className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 flex-1 text-sm text-slate-900 dark:text-slate-200 focus:border-[var(--primary)] focus:outline-none"
-                                placeholder="Add Platform"
-                                value={newPlatform}
-                                onChange={(e) => setNewPlatform(e.target.value)}
-                            />
-                            <button onClick={handleAddPlatform} className="bg-[var(--primary)] text-white p-1 rounded hover:opacity-90">
-                                <Plus className="h-4 w-4" />
-                            </button>
-                        </div>
-                        <ul className="max-h-40 overflow-y-auto space-y-1 bg-slate-100 dark:bg-slate-900/50 p-2 rounded border border-slate-200 dark:border-slate-700/50">
-                            {settings.platforms.map(p => (
-                                <li key={p} className="flex justify-between items-center text-sm text-slate-600 dark:text-slate-400">
-                                    <span>{p}</span>
-                                    <button onClick={() => handleDeletePlatform(p)} className="text-slate-400 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400">
-                                        <Trash2 className="h-3 w-3" />
+                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                        <button 
+                            onClick={() => toggleSubSection('platforms')}
+                            className="w-full flex items-center justify-between p-3 text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        >
+                            <span className="text-slate-800 dark:text-slate-200 font-medium flex items-center gap-2 text-sm uppercase tracking-wide">
+                                <List className="h-4 w-4 text-indigo-500" /> Platforms
+                            </span>
+                            {openSubSections['platforms'] ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                        </button>
+
+                        {openSubSections['platforms'] && (
+                            <div className="p-3 pt-0 border-t border-slate-200 dark:border-slate-700/50 mt-2">
+                                <div className="flex gap-2 mb-3 mt-3">
+                                    <input 
+                                        type="text" 
+                                        className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 flex-1 text-sm text-slate-900 dark:text-slate-200 focus:border-[var(--primary)] focus:outline-none"
+                                        placeholder="Add Platform"
+                                        value={newPlatform}
+                                        onChange={(e) => setNewPlatform(e.target.value)}
+                                    />
+                                    <button onClick={handleAddPlatform} className="bg-[var(--primary)] text-white p-1 rounded hover:opacity-90">
+                                        <Plus className="h-4 w-4" />
                                     </button>
-                                </li>
-                            ))}
-                        </ul>
+                                </div>
+                                <ul className="max-h-40 overflow-y-auto space-y-1 bg-white dark:bg-slate-950 p-2 rounded border border-slate-200 dark:border-slate-700/50">
+                                    {settings.platforms.map(p => (
+                                        <li key={p} className="flex justify-between items-center text-sm text-slate-600 dark:text-slate-400">
+                                            <span>{p}</span>
+                                            <button onClick={() => handleDeletePlatform(p)} className="text-slate-400 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400">
+                                                <Trash2 className="h-3 w-3" />
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

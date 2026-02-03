@@ -58,6 +58,11 @@ export interface UserProfile {
   notes: string;
 }
 
+export interface TimeSettings {
+  timeZone: string;
+  offsetMs: number; // Difference between real Date.now() and User set time
+}
+
 export interface AppSettings {
   themeColor: string;
   secondaryColor: string; // New field for background tint
@@ -69,6 +74,7 @@ export interface AppSettings {
   userProfile: UserProfile;
   logoData?: string; // Base64 encoded image string (Profile Picture)
   companyLogoData?: string; // Base64 encoded image string (Company Logo)
+  timeSettings: TimeSettings;
 }
 
 export interface QuarterlyReport {

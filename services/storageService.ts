@@ -83,7 +83,8 @@ export const loadSettings = (): AppSettings => {
         platforms: parsed.platforms || DEFAULT_PLATFORMS,
         userProfile: parsed.userProfile || { name: '', businessName: '', email: '', phone: '', notes: '' },
         logoData: parsed.logoData,
-        companyLogoData: parsed.companyLogoData
+        companyLogoData: parsed.companyLogoData,
+        timeSettings: parsed.timeSettings || { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, offsetMs: 0 }
       };
     }
   } catch (e) {
@@ -98,7 +99,8 @@ export const loadSettings = (): AppSettings => {
     categories: DEFAULT_CATEGORIES,
     expenseCategories: DEFAULT_EXPENSE_CATEGORIES,
     platforms: DEFAULT_PLATFORMS,
-    userProfile: { name: '', businessName: '', email: '', phone: '', notes: '' }
+    userProfile: { name: '', businessName: '', email: '', phone: '', notes: '' },
+    timeSettings: { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, offsetMs: 0 }
   };
 };
 

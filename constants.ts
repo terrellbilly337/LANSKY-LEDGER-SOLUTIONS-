@@ -39,3 +39,22 @@ export const DEFAULT_INVENTORY_AGING_THRESHOLD = 30; // Days
 
 export const DEFAULT_CURRENCY_LOCALE = 'en-US';
 export const DEFAULT_CURRENCY_CODE = 'USD';
+
+// Common IANA Time Zones (Offline List)
+export const SUPPORTED_TIMEZONES = [
+  "UTC",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "America/Honolulu",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Asia/Tokyo",
+  "Asia/Shanghai",
+  "Asia/Dubai",
+  "Australia/Sydney",
+  "Pacific/Auckland"
+];
