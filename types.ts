@@ -67,7 +67,8 @@ export interface AppSettings {
   expenseCategories: string[]; // Expense Categories
   platforms: string[];
   userProfile: UserProfile;
-  logoData?: string; // Base64 encoded image string
+  logoData?: string; // Base64 encoded image string (Profile Picture)
+  companyLogoData?: string; // Base64 encoded image string (Company Logo)
 }
 
 export interface QuarterlyReport {

@@ -2,7 +2,7 @@
 import React, { useRef, useState, useEffect, ReactNode } from 'react';
 import { exportData, importData, loadSettings, saveSettings, clearAllData } from '../services/storageService';
 import { setPin, hasPin as checkHasPin, verifyPin, removePin } from '../services/authService';
-import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock, FileBadge, HelpCircle } from 'lucide-react';
+import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock, FileBadge, HelpCircle, Building } from 'lucide-react';
 import { AppSettings, UserProfile } from '../types';
 
 interface SettingsProps {
@@ -47,6 +47,7 @@ const FAQItem = ({ question, answer }: { question: string, answer: string }) => 
 const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const companyLogoInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{msg: string, type: 'success' | 'error' | ''}>({ msg: '', type: '' });
   
   // Settings State
@@ -114,6 +115,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
     handleUpdateSettings({ ...settings, themeMode: newMode });
   };
   
+  // Profile Picture Upload
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -137,6 +139,33 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
   const handleRemoveLogo = () => {
       const newSettings = { ...settings };
       delete newSettings.logoData;
+      handleUpdateSettings(newSettings);
+  };
+
+  // Company Logo Upload
+  const handleCompanyLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Limit size to ~500KB
+    if (file.size > 500 * 1024) {
+        setStatus({ msg: 'Image too large. Please use an image under 500KB.', type: 'error' });
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        handleUpdateSettings({ ...settings, companyLogoData: base64 });
+        setStatus({ msg: 'Company logo updated successfully.', type: 'success' });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+  
+  const handleRemoveCompanyLogo = () => {
+      const newSettings = { ...settings };
+      delete newSettings.companyLogoData;
       handleUpdateSettings(newSettings);
   };
 
@@ -368,6 +397,42 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           onToggle={() => toggleSection('customization')}
         >
             <div className="pt-4 space-y-8">
+
+                 {/* Company Logo Upload (New) */}
+                 <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Company Logo (Replaces default icon)</label>
+                    <div className="flex items-center gap-4">
+                        <div className="h-16 w-16 bg-slate-100 dark:bg-slate-900/50 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-600 shadow-sm overflow-hidden p-1 relative group">
+                            <img src={settings.companyLogoData || "logo.svg"} alt="Company Logo" className="h-full w-full object-contain" />
+                            {settings.companyLogoData && (
+                                <button 
+                                    onClick={handleRemoveCompanyLogo}
+                                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                                    title="Reset to Default"
+                                >
+                                    <X className="h-5 w-5 text-white" />
+                                </button>
+                            )}
+                        </div>
+                        <div>
+                            <button 
+                                onClick={() => companyLogoInputRef.current?.click()}
+                                className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs py-2 px-3 rounded border border-slate-300 dark:border-slate-600 flex items-center gap-2 mb-1"
+                            >
+                                <Building className="h-4 w-4" />
+                                Upload Logo
+                            </button>
+                            <p className="text-[10px] text-slate-500">Max 500KB. Shows in top-left.</p>
+                            <input 
+                                type="file" 
+                                ref={companyLogoInputRef} 
+                                onChange={handleCompanyLogoUpload} 
+                                className="hidden" 
+                                accept="image/*"
+                            />
+                        </div>
+                    </div>
+                 </div>
                 
                 {/* Appearance Controls */}
                 <div className="flex flex-col md:flex-row md:items-end gap-6">

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, List, Plus, Settings as SettingsIcon, PieChart, Package, UserCircle } from 'lucide-react';
@@ -13,9 +14,9 @@ import { hasPin } from './services/authService';
 import { Transaction, UserProfile } from './types';
 
 // Desktop Sidebar
-const Sidebar = ({ profileImage, userProfile }: { profileImage?: string, userProfile?: UserProfile }) => {
+const Sidebar = ({ profileImage, userProfile, companyLogo }: { profileImage?: string, userProfile?: UserProfile, companyLogo?: string }) => {
   const location = useLocation();
-  const brandLogo = 'logo.svg';
+  const brandLogo = companyLogo || 'logo.svg';
   
   const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
     const isActive = location.pathname === to;
@@ -79,8 +80,8 @@ const Sidebar = ({ profileImage, userProfile }: { profileImage?: string, userPro
 };
 
 // Mobile Header
-const MobileHeader = ({ profileImage }: { profileImage?: string }) => {
-  const brandLogo = 'logo.svg';
+const MobileHeader = ({ profileImage, companyLogo }: { profileImage?: string, companyLogo?: string }) => {
+  const brandLogo = companyLogo || 'logo.svg';
   
   return (
     <div className="md:hidden bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex justify-between items-center sticky top-0 z-30 transition-colors duration-300">
@@ -205,6 +206,7 @@ const App: React.FC = () => {
   const [isLocked, setIsLocked] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [logoData, setLogoData] = useState<string | undefined>(undefined);
+  const [companyLogoData, setCompanyLogoData] = useState<string | undefined>(undefined);
   const [themeMode, setThemeMode] = useState<'light'|'dark'>('dark');
   const [userProfile, setUserProfile] = useState<UserProfile | undefined>(undefined);
 
@@ -228,6 +230,7 @@ const App: React.FC = () => {
     setTransactions(loadTransactions());
     const settings = loadSettings();
     setLogoData(settings.logoData);
+    setCompanyLogoData(settings.companyLogoData);
     setThemeMode(settings.themeMode);
     setUserProfile(settings.userProfile);
     
@@ -252,15 +255,15 @@ const App: React.FC = () => {
   }
 
   if (isLocked) {
-    // Pass undefined for logo to enforce default branding on LockScreen
-    return <LockScreen onUnlock={() => setIsLocked(false)} logo={undefined} />;
+    // Pass logo only if companyLogoData exists, otherwise undefined for default
+    return <LockScreen onUnlock={() => setIsLocked(false)} logo={companyLogoData} />;
   }
 
   return (
     <HashRouter>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 font-sans transition-colors duration-300">
-        <Sidebar profileImage={logoData} userProfile={userProfile} />
-        <MobileHeader profileImage={logoData} />
+        <Sidebar profileImage={logoData} userProfile={userProfile} companyLogo={companyLogoData} />
+        <MobileHeader profileImage={logoData} companyLogo={companyLogoData} />
         
         {/* Main Content Area - padded bottom for mobile nav */}
         <main className="md:ml-72 p-4 md:p-10 max-w-7xl mx-auto pb-24 md:pb-10">

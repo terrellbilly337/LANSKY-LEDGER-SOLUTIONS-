@@ -82,7 +82,8 @@ export const loadSettings = (): AppSettings => {
         expenseCategories: parsed.expenseCategories || DEFAULT_EXPENSE_CATEGORIES,
         platforms: parsed.platforms || DEFAULT_PLATFORMS,
         userProfile: parsed.userProfile || { name: '', businessName: '', email: '', phone: '', notes: '' },
-        logoData: parsed.logoData
+        logoData: parsed.logoData,
+        companyLogoData: parsed.companyLogoData
       };
     }
   } catch (e) {
