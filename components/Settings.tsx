@@ -1,7 +1,8 @@
+
 import React, { useRef, useState, useEffect, ReactNode } from 'react';
 import { exportData, importData, loadSettings, saveSettings, clearAllData } from '../services/storageService';
 import { setPin, hasPin as checkHasPin, verifyPin, removePin } from '../services/authService';
-import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock } from 'lucide-react';
+import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock, FileBadge, HelpCircle } from 'lucide-react';
 import { AppSettings, UserProfile } from '../types';
 
 interface SettingsProps {
@@ -36,6 +37,13 @@ const CollapsibleSection = ({
   </div>
 );
 
+const FAQItem = ({ question, answer }: { question: string, answer: string }) => (
+  <div className="border-b border-slate-100 dark:border-slate-700/50 pb-3 last:border-0 last:pb-0">
+    <h4 className="font-semibold text-slate-800 dark:text-slate-200 text-sm mb-1">{question}</h4>
+    <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed">{answer}</p>
+  </div>
+);
+
 const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -51,10 +59,11 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
 
   // Accordion State
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    'profile': true,
+    'profile': false,
     'customization': false,
     'data': false,
     'security': false,
+    'faq': false,
     'legal': false
   });
 
@@ -119,7 +128,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
     reader.onload = (event) => {
         const base64 = event.target?.result as string;
         handleUpdateSettings({ ...settings, logoData: base64 });
-        setStatus({ msg: 'App logo updated successfully.', type: 'success' });
+        setStatus({ msg: 'Profile picture updated successfully.', type: 'success' });
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -249,19 +258,25 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           isOpen={openSections['profile']} 
           onToggle={() => toggleSection('profile')}
         >
+           {/* ... Profile content (kept same as before) ... */}
            <div className="space-y-4 pt-4">
-              {/* Custom Logo Upload */}
+              {/* Profile Picture Upload */}
               <div className="flex items-start gap-6 mb-2">
                  <div>
-                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Custom App Logo</label>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Profile Picture</label>
                     <div className="flex items-center gap-4">
-                        <div className="h-20 w-20 bg-slate-100 dark:bg-slate-900/50 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-600 shadow-sm overflow-hidden p-1 relative group">
-                            <img src={settings.logoData || "logo.svg"} alt="App Logo" className="h-full w-full object-contain" />
+                        <div className="h-20 w-20 bg-slate-100 dark:bg-slate-900/50 rounded-full flex items-center justify-center border border-slate-200 dark:border-slate-600 shadow-sm overflow-hidden relative group">
+                            {settings.logoData ? (
+                                <img src={settings.logoData} alt="Profile" className="h-full w-full object-cover" />
+                            ) : (
+                                <User className="h-10 w-10 text-slate-300" />
+                            )}
+                            
                             {settings.logoData && (
                                 <button 
                                     onClick={handleRemoveLogo}
                                     className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                                    title="Remove Logo"
+                                    title="Remove Photo"
                                 >
                                     <X className="h-6 w-6 text-white" />
                                 </button>
@@ -273,9 +288,9 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                                 className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs py-2 px-3 rounded border border-slate-300 dark:border-slate-600 flex items-center gap-2 mb-1"
                             >
                                 <ImageIcon className="h-4 w-4" />
-                                Upload Logo
+                                Upload Photo
                             </button>
-                            <p className="text-[10px] text-slate-500">Max 500KB. Displayed in app header.</p>
+                            <p className="text-[10px] text-slate-500">Max 500KB. Displayed in sidebar and header.</p>
                             <input 
                                 type="file" 
                                 ref={logoInputRef} 
@@ -344,7 +359,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                 </div>
            </div>
         </CollapsibleSection>
-
+        
         {/* Visual Theme & Customization */}
         <CollapsibleSection 
           title="Visual Theme & Customization" 
@@ -515,8 +530,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                 </div>
             </div>
         </CollapsibleSection>
-        
-        {/* ... Rest of the component (Data Management, Security, Legal) remains unchanged ... */}
+
         {/* Data Management Section */}
         <CollapsibleSection 
           title="Data Management" 
@@ -681,6 +695,37 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                     </form>
                 )}
             </div>
+        </CollapsibleSection>
+
+        {/* FAQ Section */}
+        <CollapsibleSection
+          title="FAQ / Help"
+          icon={HelpCircle}
+          isOpen={openSections['faq']}
+          onToggle={() => toggleSection('faq')}
+        >
+          <div className="pt-4 space-y-4">
+             <FAQItem 
+               question="Where is my data stored?"
+               answer="Lansky Ledger uses your device's Local Storage to save all transactions and settings. No data is ever sent to a remote server or cloud. This ensures total privacy but means you are responsible for backups."
+             />
+             <FAQItem 
+               question="How do I backup my data?"
+               answer="Go to the 'Data Management' section above and click 'Export / Backup'. This will download a JSON file containing your entire ledger. You can restore this file on any device running Lansky Ledger."
+             />
+             <FAQItem 
+               question="What if I forget my PIN?"
+               answer="Because there is no central server, there is no way to reset a lost PIN without wiping your data. If you lose your PIN, you must perform a factory reset (which deletes all data) to regain access."
+             />
+             <FAQItem 
+               question="Does clearing my browser cache delete my ledger?"
+               answer="Yes. Clearing 'Site Data' or 'Local Storage' in your browser settings will erase your ledger. We highly recommend performing regular backups (Exports) to prevent data loss."
+             />
+             <FAQItem 
+               question="Is the 'Dead Stock' alert automatic?"
+               answer="Yes. The system checks your inventory every time the dashboard loads. Items listed as 'IN_STOCK' for longer than your configured threshold (default 30 days) are flagged as Dead Stock."
+             />
+          </div>
         </CollapsibleSection>
 
         {/* Legal Section */}

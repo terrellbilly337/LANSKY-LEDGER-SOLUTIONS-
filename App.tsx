@@ -10,12 +10,12 @@ import Reports from './components/Reports';
 import LockScreen from './components/LockScreen';
 import { loadTransactions, saveTransaction, deleteTransaction, loadSettings } from './services/storageService';
 import { hasPin } from './services/authService';
-import { Transaction } from './types';
+import { Transaction, UserProfile } from './types';
 
 // Desktop Sidebar
-const Sidebar = ({ logo }: { logo?: string }) => {
+const Sidebar = ({ profileImage, userProfile }: { profileImage?: string, userProfile?: UserProfile }) => {
   const location = useLocation();
-  const imgSrc = logo || 'logo.svg';
+  const brandLogo = 'logo.svg';
   
   const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
     const isActive = location.pathname === to;
@@ -38,11 +38,11 @@ const Sidebar = ({ logo }: { logo?: string }) => {
     <div className="w-72 bg-white border-r border-slate-200 dark:bg-slate-900 dark:border-slate-800 flex flex-col h-screen fixed left-0 top-0 z-20 hidden md:flex transition-colors duration-300">
       <div className="p-8 pb-4 flex items-center gap-3">
         <div className="h-10 w-10 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center overflow-hidden shadow-sm border border-slate-200 dark:border-slate-700">
-          <img src={imgSrc} alt="Logo" className="h-7 w-7 object-contain" />
+          <img src={brandLogo} alt="Logo" className="h-7 w-7 object-contain" />
         </div>
         <div>
-          <h1 className="text-slate-950 dark:text-white font-extrabold tracking-tight text-xl">LANSKY</h1>
-          <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-widest font-bold">Ledger Solutions</p>
+          <h1 className="text-slate-900 dark:text-white font-black tracking-tighter text-2xl">LANSKY</h1>
+          <p className="text-xs text-[var(--primary)] font-bold tracking-widest uppercase mt-0.5">Ledger Solutions</p>
         </div>
       </div>
       
@@ -58,33 +58,47 @@ const Sidebar = ({ logo }: { logo?: string }) => {
         <NavItem to="/settings" icon={SettingsIcon} label="Settings" />
       </nav>
 
-      <div className="p-6 border-t border-slate-100 dark:border-slate-800">
-        <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
-          <p className="text-xs text-slate-500 font-medium text-center">
-            Secure • Offline • v1.3
-          </p>
-        </div>
+      {/* User Profile Card */}
+      <div className="p-4 border-t border-slate-100 dark:border-slate-800">
+          <NavLink to="/settings" className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+            {profileImage ? (
+                <img src={profileImage} alt="Profile" className="h-10 w-10 rounded-full object-cover border border-slate-200 dark:border-slate-600 bg-slate-200 dark:bg-slate-700" />
+            ) : (
+                <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
+                    <UserCircle className="h-6 w-6 text-slate-400" />
+                </div>
+            )}
+            <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{userProfile?.name || 'User'}</p>
+                <p className="text-xs text-slate-500 truncate">{userProfile?.businessName || 'My Ledger'}</p>
+            </div>
+          </NavLink>
       </div>
     </div>
   );
 };
 
 // Mobile Header
-const MobileHeader = ({ logo }: { logo?: string }) => {
-  const imgSrc = logo || 'logo.svg';
+const MobileHeader = ({ profileImage }: { profileImage?: string }) => {
+  const brandLogo = 'logo.svg';
+  
   return (
     <div className="md:hidden bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex justify-between items-center sticky top-0 z-30 transition-colors duration-300">
       <div className="flex items-center gap-3">
          <div className="h-9 w-9 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-700 shadow-sm">
-            <img src={imgSrc} alt="Logo" className="h-6 w-6 object-contain" />
+            <img src={brandLogo} alt="Logo" className="h-6 w-6 object-contain" />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-slate-950 dark:text-white font-extrabold text-xl tracking-tight leading-none">LANSKY</h1>
-            <p className="text-[10px] text-slate-600 dark:text-slate-400 uppercase tracking-widest font-bold leading-none mt-1">Ledger Solutions</p>
+            <h1 className="text-slate-900 dark:text-white font-black text-xl tracking-tighter leading-none">LANSKY</h1>
+            <p className="text-[10px] text-[var(--primary)] font-bold tracking-widest uppercase leading-none mt-1">Ledger Solutions</p>
           </div>
       </div>
-      <NavLink to="/settings" className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-        <UserCircle className="h-7 w-7 text-slate-400 dark:text-slate-500" />
+      <NavLink to="/settings" className="rounded-full overflow-hidden border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all">
+        {profileImage ? (
+             <img src={profileImage} alt="Profile" className="h-8 w-8 object-cover bg-slate-200 dark:bg-slate-700" />
+        ) : (
+             <UserCircle className="h-8 w-8 text-slate-400 dark:text-slate-500 p-0.5" />
+        )}
       </NavLink>
     </div>
   );
@@ -192,6 +206,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [logoData, setLogoData] = useState<string | undefined>(undefined);
   const [themeMode, setThemeMode] = useState<'light'|'dark'>('dark');
+  const [userProfile, setUserProfile] = useState<UserProfile | undefined>(undefined);
 
   useEffect(() => {
     refreshData();
@@ -214,6 +229,7 @@ const App: React.FC = () => {
     const settings = loadSettings();
     setLogoData(settings.logoData);
     setThemeMode(settings.themeMode);
+    setUserProfile(settings.userProfile);
     
     // Apply dynamic colors
     updateTheme(settings.themeColor, settings.secondaryColor);
@@ -236,14 +252,15 @@ const App: React.FC = () => {
   }
 
   if (isLocked) {
-    return <LockScreen onUnlock={() => setIsLocked(false)} logo={logoData} />;
+    // Pass undefined for logo to enforce default branding on LockScreen
+    return <LockScreen onUnlock={() => setIsLocked(false)} logo={undefined} />;
   }
 
   return (
     <HashRouter>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 font-sans transition-colors duration-300">
-        <Sidebar logo={logoData} />
-        <MobileHeader logo={logoData} />
+        <Sidebar profileImage={logoData} userProfile={userProfile} />
+        <MobileHeader profileImage={logoData} />
         
         {/* Main Content Area - padded bottom for mobile nav */}
         <main className="md:ml-72 p-4 md:p-10 max-w-7xl mx-auto pb-24 md:pb-10">
