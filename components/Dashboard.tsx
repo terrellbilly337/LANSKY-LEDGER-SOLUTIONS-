@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Transaction, LedgerSummary, InventoryItem, InventorySummary } from '../types';
 import { calculateSummary, formatCurrency, getChartData, calculateInventorySummary } from '../services/financeService';
-import { loadInventory } from '../services/storageService';
+import { loadInventory, loadSettings } from '../services/storageService';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Package, TrendingUp, Wallet, ArrowRight } from 'lucide-react';
+import { Package, TrendingUp, Wallet, ArrowRight, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
@@ -70,12 +70,26 @@ const AccountCard = ({
 const Dashboard: React.FC<DashboardProps> = ({ transactions, isDarkMode }) => {
   const navigate = useNavigate();
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [agingCount, setAgingCount] = useState(0);
+  const [agingThreshold, setAgingThreshold] = useState(30);
   
   const summary: LedgerSummary = useMemo(() => calculateSummary(transactions), [transactions]);
   const chartData = useMemo(() => getChartData(transactions), [transactions]);
   
   useEffect(() => {
-    setInventory(loadInventory());
+    const loadedInventory = loadInventory();
+    const settings = loadSettings();
+    setInventory(loadedInventory);
+    setAgingThreshold(settings.inventoryAgingThreshold);
+
+    // Calculate aging items
+    const now = new Date().getTime();
+    const aging = loadedInventory.filter(item => {
+        if (item.status !== 'IN_STOCK') return false;
+        const daysHeld = Math.floor((now - new Date(item.dateAcquired).getTime()) / (1000 * 60 * 60 * 24));
+        return daysHeld > settings.inventoryAgingThreshold;
+    });
+    setAgingCount(aging.length);
   }, [transactions]); 
 
   const invSummary: InventorySummary = useMemo(() => calculateInventorySummary(inventory), [inventory]);
@@ -88,6 +102,22 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, isDarkMode }) => {
                 {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
             </span>
         </div>
+
+        {/* Alerts Section */}
+        {agingCount > 0 && (
+            <div onClick={() => navigate('/inventory')} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/50 rounded-xl p-4 flex items-center justify-between cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors">
+                <div className="flex items-center gap-3">
+                    <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-500" />
+                    <div>
+                        <p className="text-sm font-bold text-amber-800 dark:text-amber-200">Dead Stock Alert</p>
+                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                            You have {agingCount} item{agingCount !== 1 ? 's' : ''} in stock for over {agingThreshold} days.
+                        </p>
+                    </div>
+                </div>
+                <ArrowRight className="h-4 w-4 text-amber-500" />
+            </div>
+        )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 landscape:grid-cols-3 gap-4 md:gap-6">
         <AccountCard 

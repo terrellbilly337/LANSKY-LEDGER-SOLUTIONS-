@@ -1,8 +1,10 @@
+
 import React, { useRef, useState, useEffect, ReactNode } from 'react';
-import { exportData, importData, loadSettings, saveSettings } from '../services/storageService';
+import { exportData, importData, loadSettings, saveSettings, clearAllData } from '../services/storageService';
 import { setPin, hasPin as checkHasPin, verifyPin, removePin } from '../services/authService';
-import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon } from 'lucide-react';
+import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock, FileBadge, HelpCircle } from 'lucide-react';
 import { AppSettings, UserProfile } from '../types';
+import { TaxHub } from './TaxHub';
 
 interface SettingsProps {
   onDataChanged: () => void;
@@ -36,6 +38,13 @@ const CollapsibleSection = ({
   </div>
 );
 
+const FAQItem = ({ question, answer }: { question: string, answer: string }) => (
+  <div className="border-b border-slate-100 dark:border-slate-700/50 pb-3 last:border-0 last:pb-0">
+    <h4 className="font-semibold text-slate-800 dark:text-slate-200 text-sm mb-1">{question}</h4>
+    <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed">{answer}</p>
+  </div>
+);
+
 const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -51,10 +60,12 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
 
   // Accordion State
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    'profile': true,
+    'profile': false,
+    'tax': false,
     'customization': false,
     'data': false,
     'security': false,
+    'faq': false,
     'legal': false
   });
 
@@ -67,7 +78,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
   const [pinInput, setPinInput] = useState('');
   const [currentPinInput, setCurrentPinInput] = useState('');
   const [showPinSetup, setShowPinSetup] = useState(false);
-  const [pinAction, setPinAction] = useState<'SET' | 'CHANGE' | 'REMOVE' | null>(null);
+  const [pinAction, setPinAction] = useState<'SET' | 'CHANGE' | 'REMOVE' | 'RESET_APP' | null>(null);
 
   useEffect(() => {
     setIsPinSet(checkHasPin());
@@ -96,6 +107,10 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
     handleUpdateSettings({ ...settings, secondaryColor: e.target.value });
   };
   
+  const handleAgingThresholdChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    handleUpdateSettings({ ...settings, inventoryAgingThreshold: parseInt(e.target.value) });
+  };
+
   const toggleThemeMode = () => {
     const newMode = settings.themeMode === 'light' ? 'dark' : 'light';
     handleUpdateSettings({ ...settings, themeMode: newMode });
@@ -197,8 +212,24 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
     reader.readAsText(file);
     e.target.value = ''; 
   };
+  
+  const handleFactoryResetClick = () => {
+      if (isPinSet) {
+          setPinAction('RESET_APP');
+          setShowPinSetup(true);
+      } else {
+          performFactoryReset();
+      }
+  };
 
-  // --- PIN Logic (Unchanged) ---
+  const performFactoryReset = () => {
+      if (window.confirm("CRITICAL WARNING: This will permanently delete ALL transactions, inventory, and settings. This cannot be undone. Are you sure?")) {
+          clearAllData();
+          window.location.reload();
+      }
+  };
+
+  // --- PIN Logic ---
   const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (pinAction === 'SET') {
@@ -211,6 +242,10 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
     } else if (pinAction === 'REMOVE') {
         if (!await verifyPin(currentPinInput)) { setStatus({ msg: 'Incorrect PIN.', type: 'error' }); return; }
         removePin(); setIsPinSet(false); setStatus({ msg: 'Security PIN removed.', type: 'success' }); resetPinForm();
+    } else if (pinAction === 'RESET_APP') {
+        if (!await verifyPin(currentPinInput)) { setStatus({ msg: 'Incorrect PIN. Cannot reset.', type: 'error' }); return; }
+        resetPinForm();
+        performFactoryReset();
     }
   };
   const resetPinForm = () => { setPinInput(''); setCurrentPinInput(''); setPinAction(null); setShowPinSetup(false); };
@@ -225,6 +260,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           isOpen={openSections['profile']} 
           onToggle={() => toggleSection('profile')}
         >
+           {/* ... Profile content (kept same as before) ... */}
            <div className="space-y-4 pt-4">
               {/* Custom Logo Upload */}
               <div className="flex items-start gap-6 mb-2">
@@ -320,6 +356,18 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                 </div>
            </div>
         </CollapsibleSection>
+        
+        {/* Tax Information Section */}
+        <CollapsibleSection
+          title="Tax Information"
+          icon={FileBadge}
+          isOpen={openSections['tax']}
+          onToggle={() => toggleSection('tax')}
+        >
+          <div className="pt-4">
+            <TaxHub />
+          </div>
+        </CollapsibleSection>
 
         {/* Visual Theme & Customization */}
         <CollapsibleSection 
@@ -328,6 +376,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           isOpen={openSections['customization']} 
           onToggle={() => toggleSection('customization')}
         >
+            {/* ... Customization content (kept same) ... */}
             <div className="pt-4 space-y-8">
                 
                 {/* Appearance Controls */}
@@ -373,7 +422,33 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                     </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Inventory Settings (Moved here per user request for aging threshold) */}
+                    <div className="md:col-span-2 border-t border-slate-200 dark:border-slate-700 pt-6">
+                        <div className="flex flex-col md:flex-row gap-6">
+                            <div className="flex-1">
+                                <label className="flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">
+                                    <Clock className="h-4 w-4" />
+                                    Dead Stock
+                                </label>
+                                <div className="relative">
+                                    <select 
+                                        value={settings.inventoryAgingThreshold}
+                                        onChange={handleAgingThresholdChange}
+                                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-200 rounded px-3 py-2 appearance-none focus:outline-none focus:border-[var(--primary)]"
+                                    >
+                                        <option value={30}>30 Days</option>
+                                        <option value={60}>60 Days</option>
+                                        <option value={90}>90 Days</option>
+                                    </select>
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-1">Define the age threshold for Dead Stock (items unsold for X days).</p>
+                            </div>
+                            <div className="flex-1"></div>
+                        </div>
+                    </div>
+
                     {/* Buy/Sell Categories */}
                     <div>
                         <h3 className="text-slate-800 dark:text-slate-200 font-medium mb-3 flex items-center gap-2 text-sm uppercase tracking-wide">
@@ -473,13 +548,14 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           isOpen={openSections['data']} 
           onToggle={() => toggleSection('data')}
         >
+            {/* ... Data Management content (kept same) ... */}
             <div className="pt-4">
                 <p className="text-slate-500 dark:text-slate-400 mb-6 text-sm leading-relaxed">
                     Lansky Ledger operates entirely offline. Your financial data is stored in your browser's local storage.
                     Use the tools below to backup your ledger to a JSON file or restore from a previous backup.
                 </p>
 
-                <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex flex-col sm:flex-row gap-4 mb-6">
                     <button 
                     onClick={handleExport}
                     className="flex-1 flex items-center justify-center gap-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 py-3 px-4 rounded border border-slate-300 dark:border-slate-600 transition-colors"
@@ -503,6 +579,22 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                     accept=".json"
                     />
                 </div>
+
+                <div className="border-t border-rose-200 dark:border-rose-900/50 pt-6">
+                    <h4 className="text-rose-600 dark:text-rose-400 font-bold mb-2 flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4" /> Danger Zone
+                    </h4>
+                    <p className="text-xs text-slate-500 mb-4">
+                        Permanently wipe all data from this device. If a PIN is set, it will be required.
+                    </p>
+                    <button 
+                        onClick={handleFactoryResetClick}
+                        className="w-full bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 py-3 rounded transition-colors font-medium flex items-center justify-center gap-2"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                        Factory Reset / Delete All Data
+                    </button>
+                </div>
             </div>
         </CollapsibleSection>
 
@@ -513,6 +605,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           isOpen={openSections['security']} 
           onToggle={() => toggleSection('security')}
         >
+            {/* ... Security content (kept same) ... */}
             <div className="pt-4">
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-base font-medium text-slate-700 dark:text-slate-300">PIN Protection Status</h3>
@@ -559,12 +652,16 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                 ) : (
                     <form onSubmit={handlePinSubmit} className="bg-slate-100 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-4">
                         <h3 className="text-slate-800 dark:text-slate-200 font-medium">
-                            {pinAction === 'SET' ? 'Set New PIN' : pinAction === 'CHANGE' ? 'Change PIN' : 'Remove PIN'}
+                            {pinAction === 'SET' ? 'Set New PIN' : 
+                             pinAction === 'CHANGE' ? 'Change PIN' : 
+                             pinAction === 'RESET_APP' ? 'Security Verification' : 'Remove PIN'}
                         </h3>
                         
-                        {(pinAction === 'CHANGE' || pinAction === 'REMOVE') && (
+                        {(pinAction === 'CHANGE' || pinAction === 'REMOVE' || pinAction === 'RESET_APP') && (
                             <div>
-                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Current PIN</label>
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                    {pinAction === 'RESET_APP' ? 'Enter PIN to confirm Factory Reset' : 'Current PIN'}
+                                </label>
                                 <input 
                                     type="password" 
                                     inputMode="numeric"
@@ -602,7 +699,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                             </button>
                             <button 
                                 type="submit"
-                                className={`flex-1 py-2 rounded text-white ${pinAction === 'REMOVE' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                                className={`flex-1 py-2 rounded text-white ${pinAction === 'REMOVE' || pinAction === 'RESET_APP' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
                             >
                                 Confirm
                             </button>
@@ -610,6 +707,41 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                     </form>
                 )}
             </div>
+        </CollapsibleSection>
+
+        {/* FAQ Section */}
+        <CollapsibleSection
+          title="FAQ / Help"
+          icon={HelpCircle}
+          isOpen={openSections['faq']}
+          onToggle={() => toggleSection('faq')}
+        >
+          <div className="pt-4 space-y-4">
+             <FAQItem 
+               question="Where is my data stored?"
+               answer="Lansky Ledger uses your device's Local Storage to save all transactions and settings. No data is ever sent to a remote server or cloud. This ensures total privacy but means you are responsible for backups."
+             />
+             <FAQItem 
+               question="How do I backup my data?"
+               answer="Go to the 'Data Management' section above and click 'Export / Backup'. This will download a JSON file containing your entire ledger. You can restore this file on any device running Lansky Ledger."
+             />
+             <FAQItem 
+               question="Can I use the Tax Reports for official filing?"
+               answer="The Tax Hub provides estimates and worksheets based on standard IRS Schedule C categories. However, this is NOT official tax advice. You should always review the generated PDF with a qualified CPA or tax professional before filing."
+             />
+             <FAQItem 
+               question="What if I forget my PIN?"
+               answer="Because there is no central server, there is no way to reset a lost PIN without wiping your data. If you lose your PIN, you must perform a factory reset (which deletes all data) to regain access."
+             />
+             <FAQItem 
+               question="Does clearing my browser cache delete my ledger?"
+               answer="Yes. Clearing 'Site Data' or 'Local Storage' in your browser settings will erase your ledger. We highly recommend performing regular backups (Exports) to prevent data loss."
+             />
+             <FAQItem 
+               question="Is the 'Dead Stock' alert automatic?"
+               answer="Yes. The system checks your inventory every time the dashboard loads. Items listed as 'IN_STOCK' for longer than your configured threshold (default 30 days) are flagged as Dead Stock."
+             />
+          </div>
         </CollapsibleSection>
 
         {/* Legal Section */}

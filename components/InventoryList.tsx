@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { InventoryItem } from '../types';
 import { formatCurrency } from '../services/financeService';
 import { loadInventory, deleteInventoryItem, loadSettings } from '../services/storageService';
-import { Search, Trash2, Package, Filter, Tag } from 'lucide-react';
+import { Search, Trash2, Package, Filter, AlertCircle, LayoutList } from 'lucide-react';
 
 const InventoryList: React.FC = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -12,6 +12,8 @@ const InventoryList: React.FC = () => {
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [agingThreshold, setAgingThreshold] = useState(30);
+  const [view, setView] = useState<'ALL' | 'DEAD_STOCK'>('ALL');
 
   useEffect(() => {
     refreshData();
@@ -22,6 +24,7 @@ const InventoryList: React.FC = () => {
     const settings = loadSettings();
     setAvailableCategories(settings.categories);
     setAvailablePlatforms(settings.platforms);
+    setAgingThreshold(settings.inventoryAgingThreshold);
   };
 
   const handleDelete = (id: string) => {
@@ -31,6 +34,17 @@ const InventoryList: React.FC = () => {
     }
   };
 
+  const getDaysHeld = (dateAcquired: string): number => {
+    const start = new Date(dateAcquired).getTime();
+    const now = new Date().getTime();
+    return Math.floor((now - start) / (1000 * 60 * 60 * 24));
+  };
+  
+  // Calculate Dead Stock Count for Tab Badge
+  const deadStockCount = useMemo(() => {
+      return inventory.filter(i => i.status === 'IN_STOCK' && getDaysHeld(i.dateAcquired) > agingThreshold).length;
+  }, [inventory, agingThreshold]);
+
   const filteredData = useMemo(() => {
     return inventory.filter(item => {
       const matchesSearch = item.name.toLowerCase().includes(filter.toLowerCase()) || 
@@ -38,15 +52,53 @@ const InventoryList: React.FC = () => {
       const matchesCategory = categoryFilter === 'ALL' || item.category === categoryFilter;
       const matchesPlatform = platformFilter === 'ALL' || item.platform === platformFilter;
       
-      return matchesSearch && matchesCategory && matchesPlatform;
+      let matchesView = true;
+      if (view === 'DEAD_STOCK') {
+          const daysHeld = getDaysHeld(item.dateAcquired);
+          matchesView = item.status === 'IN_STOCK' && daysHeld > agingThreshold;
+      }
+
+      return matchesSearch && matchesCategory && matchesPlatform && matchesView;
     }).sort((a, b) => new Date(b.dateAcquired).getTime() - new Date(a.dateAcquired).getTime());
-  }, [inventory, filter, categoryFilter, platformFilter]);
+  }, [inventory, filter, categoryFilter, platformFilter, view, agingThreshold]);
 
   return (
     <div className="space-y-4">
       {/* Header & Controls */}
       <div className="flex flex-col gap-4">
-         <h2 className="text-xl font-bold text-slate-800 dark:text-white px-1">Inventory</h2>
+         <div className="flex justify-between items-center px-1">
+             <h2 className="text-xl font-bold text-slate-800 dark:text-white">Inventory</h2>
+             <div className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                 <span>Dead Stock Threshold: &gt;{agingThreshold}d</span>
+             </div>
+         </div>
+         
+         {/* View Tabs */}
+         <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-lg self-start">
+             <button
+                onClick={() => setView('ALL')}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === 'ALL' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+             >
+                 <div className="flex items-center gap-2">
+                     <LayoutList className="h-4 w-4" />
+                     <span>All Items</span>
+                 </div>
+             </button>
+             <button
+                onClick={() => setView('DEAD_STOCK')}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === 'DEAD_STOCK' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+             >
+                 <div className="flex items-center gap-2">
+                     <AlertCircle className={`h-4 w-4 ${deadStockCount > 0 ? 'text-amber-500' : ''}`} />
+                     <span>Dead Stock</span>
+                     {deadStockCount > 0 && (
+                         <span className="bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-[10px] px-1.5 rounded-full min-w-[20px] text-center">
+                             {deadStockCount}
+                         </span>
+                     )}
+                 </div>
+             </button>
+         </div>
          
          <div className="bg-white dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row gap-2">
             <div className="relative flex-grow">
@@ -122,7 +174,11 @@ const InventoryList: React.FC = () => {
        {/* Mobile List View (Cards) */}
        <div className="md:hidden space-y-3">
         {filteredData.length > 0 ? (
-          filteredData.map((item) => (
+          filteredData.map((item) => {
+            const daysHeld = getDaysHeld(item.dateAcquired);
+            const isAging = item.status === 'IN_STOCK' && daysHeld > agingThreshold;
+
+            return (
             <div key={item.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-start gap-3">
                 <div className="h-12 w-12 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg flex items-center justify-center flex-shrink-0 text-indigo-600 dark:text-indigo-400">
                     <Package className="h-6 w-6" />
@@ -142,6 +198,13 @@ const InventoryList: React.FC = () => {
                         ) : (
                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Sold</span>
                         )}
+                        
+                        {isAging && (
+                            <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">
+                                <AlertCircle className="h-3 w-3" />
+                                {daysHeld}d
+                            </span>
+                        )}
                     </div>
                 </div>
                 <button 
@@ -151,9 +214,12 @@ const InventoryList: React.FC = () => {
                     <Trash2 className="h-4 w-4" />
                 </button>
             </div>
-          ))
+            );
+          })
         ) : (
-            <div className="text-center py-10 text-slate-400">No inventory found.</div>
+            <div className="text-center py-10 text-slate-400">
+                {view === 'DEAD_STOCK' ? 'No Dead Stock items found.' : 'No inventory items found.'}
+            </div>
         )}
        </div>
 
@@ -174,9 +240,21 @@ const InventoryList: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {filteredData.length > 0 ? (
-              filteredData.map((item) => (
+              filteredData.map((item) => {
+                const daysHeld = getDaysHeld(item.dateAcquired);
+                const isAging = item.status === 'IN_STOCK' && daysHeld > agingThreshold;
+
+                return (
                 <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap font-mono text-slate-600 dark:text-slate-400">{new Date(item.dateAcquired).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="font-mono text-slate-600 dark:text-slate-400">{new Date(item.dateAcquired).toLocaleDateString()}</div>
+                      {isAging && (
+                          <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-bold mt-1">
+                              <AlertCircle className="h-3 w-3" />
+                              {daysHeld} days
+                          </div>
+                      )}
+                  </td>
                   <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">
                     {item.name}
                   </td>
@@ -217,11 +295,11 @@ const InventoryList: React.FC = () => {
                     </button>
                   </td>
                 </tr>
-              ))
+              )})
             ) : (
               <tr>
                 <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
-                  No inventory items found.
+                    {view === 'DEAD_STOCK' ? 'No Dead Stock items found.' : 'No inventory items found.'}
                 </td>
               </tr>
             )}

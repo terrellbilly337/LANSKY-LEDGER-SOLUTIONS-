@@ -1,6 +1,6 @@
 
 import { Transaction, TransactionType, InventoryItem, AppSettings } from '../types';
-import { APP_STORAGE_KEY, INVENTORY_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_PLATFORMS, DEFAULT_THEME_COLOR, DEFAULT_SECONDARY_COLOR } from '../constants';
+import { APP_STORAGE_KEY, INVENTORY_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_PLATFORMS, DEFAULT_THEME_COLOR, DEFAULT_SECONDARY_COLOR, DEFAULT_INVENTORY_AGING_THRESHOLD } from '../constants';
 
 // Helper to generate simple UUIDs locally
 const generateId = (): string => {
@@ -77,6 +77,7 @@ export const loadSettings = (): AppSettings => {
         themeColor: parsed.themeColor || DEFAULT_THEME_COLOR,
         secondaryColor: parsed.secondaryColor || DEFAULT_SECONDARY_COLOR,
         themeMode: parsed.themeMode || 'dark',
+        inventoryAgingThreshold: parsed.inventoryAgingThreshold || DEFAULT_INVENTORY_AGING_THRESHOLD,
         categories: parsed.categories || DEFAULT_CATEGORIES,
         expenseCategories: parsed.expenseCategories || DEFAULT_EXPENSE_CATEGORIES,
         platforms: parsed.platforms || DEFAULT_PLATFORMS,
@@ -92,6 +93,7 @@ export const loadSettings = (): AppSettings => {
     themeColor: DEFAULT_THEME_COLOR,
     secondaryColor: DEFAULT_SECONDARY_COLOR,
     themeMode: 'dark',
+    inventoryAgingThreshold: DEFAULT_INVENTORY_AGING_THRESHOLD,
     categories: DEFAULT_CATEGORIES,
     expenseCategories: DEFAULT_EXPENSE_CATEGORIES,
     platforms: DEFAULT_PLATFORMS,
@@ -103,6 +105,9 @@ export const saveSettings = (settings: AppSettings): void => {
   localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 };
 
+export const clearAllData = (): void => {
+  localStorage.clear();
+};
 
 // --- Backup/Restore ---
 

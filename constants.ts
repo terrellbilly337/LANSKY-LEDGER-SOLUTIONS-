@@ -35,6 +35,7 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
 
 export const DEFAULT_THEME_COLOR = '#4f46e5'; // Indigo-600
 export const DEFAULT_SECONDARY_COLOR = '#64748b'; // Slate-500 (Base for backgrounds)
+export const DEFAULT_INVENTORY_AGING_THRESHOLD = 30; // Days
 
 export const DEFAULT_CURRENCY_LOCALE = 'en-US';
 export const DEFAULT_CURRENCY_CODE = 'USD';
