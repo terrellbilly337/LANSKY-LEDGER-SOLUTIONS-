@@ -1,10 +1,8 @@
-
 import React, { useRef, useState, useEffect, ReactNode } from 'react';
 import { exportData, importData, loadSettings, saveSettings, clearAllData } from '../services/storageService';
 import { setPin, hasPin as checkHasPin, verifyPin, removePin } from '../services/authService';
-import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock, FileBadge, HelpCircle } from 'lucide-react';
+import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock } from 'lucide-react';
 import { AppSettings, UserProfile } from '../types';
-import { TaxHub } from './TaxHub';
 
 interface SettingsProps {
   onDataChanged: () => void;
@@ -38,13 +36,6 @@ const CollapsibleSection = ({
   </div>
 );
 
-const FAQItem = ({ question, answer }: { question: string, answer: string }) => (
-  <div className="border-b border-slate-100 dark:border-slate-700/50 pb-3 last:border-0 last:pb-0">
-    <h4 className="font-semibold text-slate-800 dark:text-slate-200 text-sm mb-1">{question}</h4>
-    <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed">{answer}</p>
-  </div>
-);
-
 const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -60,12 +51,10 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
 
   // Accordion State
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    'profile': false,
-    'tax': false,
+    'profile': true,
     'customization': false,
     'data': false,
     'security': false,
-    'faq': false,
     'legal': false
   });
 
@@ -260,7 +249,6 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           isOpen={openSections['profile']} 
           onToggle={() => toggleSection('profile')}
         >
-           {/* ... Profile content (kept same as before) ... */}
            <div className="space-y-4 pt-4">
               {/* Custom Logo Upload */}
               <div className="flex items-start gap-6 mb-2">
@@ -356,18 +344,6 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                 </div>
            </div>
         </CollapsibleSection>
-        
-        {/* Tax Information Section */}
-        <CollapsibleSection
-          title="Tax Information"
-          icon={FileBadge}
-          isOpen={openSections['tax']}
-          onToggle={() => toggleSection('tax')}
-        >
-          <div className="pt-4">
-            <TaxHub />
-          </div>
-        </CollapsibleSection>
 
         {/* Visual Theme & Customization */}
         <CollapsibleSection 
@@ -376,7 +352,6 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           isOpen={openSections['customization']} 
           onToggle={() => toggleSection('customization')}
         >
-            {/* ... Customization content (kept same) ... */}
             <div className="pt-4 space-y-8">
                 
                 {/* Appearance Controls */}
@@ -540,7 +515,8 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                 </div>
             </div>
         </CollapsibleSection>
-
+        
+        {/* ... Rest of the component (Data Management, Security, Legal) remains unchanged ... */}
         {/* Data Management Section */}
         <CollapsibleSection 
           title="Data Management" 
@@ -548,7 +524,6 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           isOpen={openSections['data']} 
           onToggle={() => toggleSection('data')}
         >
-            {/* ... Data Management content (kept same) ... */}
             <div className="pt-4">
                 <p className="text-slate-500 dark:text-slate-400 mb-6 text-sm leading-relaxed">
                     Lansky Ledger operates entirely offline. Your financial data is stored in your browser's local storage.
@@ -605,7 +580,6 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           isOpen={openSections['security']} 
           onToggle={() => toggleSection('security')}
         >
-            {/* ... Security content (kept same) ... */}
             <div className="pt-4">
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-base font-medium text-slate-700 dark:text-slate-300">PIN Protection Status</h3>
@@ -707,41 +681,6 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                     </form>
                 )}
             </div>
-        </CollapsibleSection>
-
-        {/* FAQ Section */}
-        <CollapsibleSection
-          title="FAQ / Help"
-          icon={HelpCircle}
-          isOpen={openSections['faq']}
-          onToggle={() => toggleSection('faq')}
-        >
-          <div className="pt-4 space-y-4">
-             <FAQItem 
-               question="Where is my data stored?"
-               answer="Lansky Ledger uses your device's Local Storage to save all transactions and settings. No data is ever sent to a remote server or cloud. This ensures total privacy but means you are responsible for backups."
-             />
-             <FAQItem 
-               question="How do I backup my data?"
-               answer="Go to the 'Data Management' section above and click 'Export / Backup'. This will download a JSON file containing your entire ledger. You can restore this file on any device running Lansky Ledger."
-             />
-             <FAQItem 
-               question="Can I use the Tax Reports for official filing?"
-               answer="The Tax Hub provides estimates and worksheets based on standard IRS Schedule C categories. However, this is NOT official tax advice. You should always review the generated PDF with a qualified CPA or tax professional before filing."
-             />
-             <FAQItem 
-               question="What if I forget my PIN?"
-               answer="Because there is no central server, there is no way to reset a lost PIN without wiping your data. If you lose your PIN, you must perform a factory reset (which deletes all data) to regain access."
-             />
-             <FAQItem 
-               question="Does clearing my browser cache delete my ledger?"
-               answer="Yes. Clearing 'Site Data' or 'Local Storage' in your browser settings will erase your ledger. We highly recommend performing regular backups (Exports) to prevent data loss."
-             />
-             <FAQItem 
-               question="Is the 'Dead Stock' alert automatic?"
-               answer="Yes. The system checks your inventory every time the dashboard loads. Items listed as 'IN_STOCK' for longer than your configured threshold (default 30 days) are flagged as Dead Stock."
-             />
-          </div>
         </CollapsibleSection>
 
         {/* Legal Section */}
