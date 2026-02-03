@@ -501,9 +501,9 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
             </div>
         </CollapsibleSection>
 
-        {/* Visual Theme & Customization */}
+        {/* Customization (Renamed from Visual Theme & Customization) */}
         <CollapsibleSection 
-          title="Visual Theme & Customization" 
+          title="Customization" 
           icon={Palette} 
           isOpen={openSections['customization']} 
           onToggle={() => toggleSection('customization')}
@@ -606,6 +606,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                                         <option value={30}>30 Days</option>
                                         <option value={60}>60 Days</option>
                                         <option value={90}>90 Days</option>
+                                        <option value={180}>180 Days</option>
                                     </select>
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                                 </div>
