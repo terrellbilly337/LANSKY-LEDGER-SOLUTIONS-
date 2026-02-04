@@ -17,27 +17,29 @@ export interface InventoryItem {
   dateAcquired: string;
   status: InventoryStatus;
   linkedTransactionId?: string;
-  imageData?: string; // Base64 string for item photo
-  
-  // Fields for Sold History snapshot
+  imageData?: string; 
   soldPriceCents?: number; 
   soldDate?: string;
+  projectedRoi?: number; 
 }
 
 export interface Transaction {
   id: string;
   description: string;
-  amountCents: number; // Stored as integer
+  amountCents: number;
   type: TransactionType;
-  date: string; // ISO string
+  date: string;
   category: string;
   platform?: string;
+  linkedItemId?: string; // For linking expenses to specific products
 }
 
 export interface LedgerSummary {
   totalBalanceCents: number;
   totalIncomeCents: number;
   totalExpenseCents: number;
+  totalInvestedCents: number; 
+  totalRecoupedCents: number; 
 }
 
 export interface InventorySummary {
@@ -64,6 +66,13 @@ export interface UserProfile {
   notes: string;
 }
 
+export interface ROIGoal {
+  id: string;
+  label: string;
+  targetPercentage: number;
+  completed: boolean;
+}
+
 export interface TimeSettings {
   timeZone: string;
   offsetMs: number; 
@@ -74,12 +83,13 @@ export interface AppSettings {
   secondaryColor: string; 
   themeMode: 'dark' | 'light';
   inventoryAgingThreshold: number; 
-  taxRatePercentage: number; // New: Tax Rate
-  fiscalYearStartMonth: number; // 0 (Jan) - 11 (Dec)
+  taxRatePercentage: number;
+  fiscalYearStartMonth: number;
   categories: string[]; 
   expenseCategories: string[]; 
   platforms: string[];
   userProfile: UserProfile;
+  roiGoals: ROIGoal[]; 
   logoData?: string; 
   companyLogoData?: string; 
   timeSettings: TimeSettings;
@@ -87,9 +97,11 @@ export interface AppSettings {
 
 export interface QuarterlyReport {
   year: number;
-  quarter: number; // 1, 2, 3, 4 based on custom start
-  label: string; // e.g., "Q1 2024"
+  quarter: number;
+  label: string;
+  dateRange: string;
   totalIncomeCents: number;
   totalExpenseCents: number;
   netProfitCents: number;
+  categories: Record<string, { income: number, expense: number, profit: number }>;
 }

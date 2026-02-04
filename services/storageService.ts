@@ -27,6 +27,7 @@ export const saveTransaction = (transaction: Omit<Transaction, 'id'>): Transacti
   };
   transactions.push(newTransaction);
   localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(transactions));
+  console.debug(`[Storage] Saved Transaction: ${newTransaction.id}`);
   return newTransaction;
 };
 
@@ -66,17 +67,17 @@ export const processSale = (
     transactionData: Omit<Transaction, 'id'>, 
     inventoryItemId: string, 
     quantitySold: number
-): boolean => {
+): Transaction | null => {
     const items = loadInventory();
     const transactions = loadTransactions();
     
     const itemIndex = items.findIndex(i => i.id === inventoryItemId);
-    if (itemIndex === -1) return false;
+    if (itemIndex === -1) return null;
 
     const originalItem = items[itemIndex];
 
     if (originalItem.quantity < quantitySold) {
-        return false; // Prevent overselling
+        return null; // Prevent overselling
     }
 
     // 1. Create Transaction
@@ -121,7 +122,8 @@ export const processSale = (
     localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(transactions));
     localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(items));
 
-    return true;
+    console.debug(`[Storage] Atomic Sale Processed: ${newTransaction.id}`);
+    return newTransaction;
 };
 
 /**
@@ -132,7 +134,7 @@ export const processBundleSale = (
     totalSaleCents: number,
     platform: string,
     date: string
-): boolean => {
+): Transaction | null => {
     const items = loadInventory();
     const transactions = loadTransactions();
 
@@ -140,7 +142,7 @@ export const processBundleSale = (
     for (const bundleItem of bundleItems) {
         const invItem = items.find(i => i.id === bundleItem.id);
         if (!invItem || invItem.quantity < bundleItem.qty) {
-            return false; // Validation failed
+            return null; // Validation failed
         }
     }
 
@@ -158,7 +160,6 @@ export const processBundleSale = (
     transactions.push(newTransaction);
 
     // 3. Process Inventory & Distribute Revenue based on COGS weight
-    // We calculate total COGS of the bundle to determine the weight of each item
     let totalBundleCost = 0;
     const bundleDetails = bundleItems.map(b => {
         const item = items.find(i => i.id === b.id)!;
@@ -171,14 +172,11 @@ export const processBundleSale = (
         const itemIndex = items.findIndex(i => i.id === detail.id);
         const originalItem = items[itemIndex];
 
-        // Determine proportional sale price for this specific item in the bundle
-        // If total cost is 0 (free items), distribute evenly or set to 0.
         let proportionalSaleCents = 0;
         if (totalBundleCost > 0) {
             const weight = detail.totalItemCost / totalBundleCost;
             proportionalSaleCents = Math.round(totalSaleCents * weight);
         } else {
-            // Fallback if costs are 0, split evenly by quantity count
             const totalQty = bundleItems.reduce((acc, curr) => acc + curr.qty, 0);
             proportionalSaleCents = Math.round((totalSaleCents / totalQty) * detail.qty);
         }
@@ -217,13 +215,12 @@ export const processBundleSale = (
     localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(transactions));
     localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(items));
 
-    return true;
+    console.debug(`[Storage] Atomic Bundle Processed: ${newTransaction.id}`);
+    return newTransaction;
 };
 
 /**
  * Processes a Refund.
- * 1. Restores inventory item to IN_STOCK.
- * 2. Creates a negative/REFUND transaction to offset the books.
  */
 export const processRefund = (inventoryItemId: string): boolean => {
     const items = loadInventory();
@@ -236,8 +233,6 @@ export const processRefund = (inventoryItemId: string): boolean => {
     if (soldItem.status !== 'SOLD' || !soldItem.soldPriceCents) return false;
 
     // 1. Restore Inventory Status
-    // We treat the refunded item as returned to stock.
-    // We strip the 'sold' metadata but keep acquisition data.
     items[itemIndex] = {
         ...soldItem,
         status: 'IN_STOCK',
@@ -250,7 +245,7 @@ export const processRefund = (inventoryItemId: string): boolean => {
     const totalRefundAmount = (soldItem.soldPriceCents || 0) * soldItem.quantity;
     const refundTransaction: Transaction = {
         id: generateId(),
-        type: TransactionType.REFUND, // Handled as negative in calculations
+        type: TransactionType.REFUND, 
         amountCents: totalRefundAmount,
         date: new Date().toISOString(),
         category: 'Refunds',
@@ -278,19 +273,19 @@ export const loadSettings = (): AppSettings => {
     const data = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (data) {
       const parsed = JSON.parse(data);
-      // Ensure defaults if keys are missing in old data
+      // Fix for missing roiGoals property in AppSettings initialization
       return {
         themeColor: parsed.themeColor || DEFAULT_THEME_COLOR,
         secondaryColor: parsed.secondaryColor || DEFAULT_SECONDARY_COLOR,
         themeMode: parsed.themeMode || 'dark',
         inventoryAgingThreshold: parsed.inventoryAgingThreshold || DEFAULT_INVENTORY_AGING_THRESHOLD,
-        fiscalYearStartMonth: parsed.fiscalYearStartMonth !== undefined ? parsed.fiscalYearStartMonth : 0, // Default Jan
-        // Default to constant if undefined
+        fiscalYearStartMonth: parsed.fiscalYearStartMonth !== undefined ? parsed.fiscalYearStartMonth : 0, 
         taxRatePercentage: parsed.taxRatePercentage !== undefined ? parsed.taxRatePercentage : DEFAULT_TAX_RATE_PERCENTAGE, 
         categories: parsed.categories || DEFAULT_CATEGORIES,
         expenseCategories: parsed.expenseCategories || DEFAULT_EXPENSE_CATEGORIES,
         platforms: parsed.platforms || DEFAULT_PLATFORMS,
         userProfile: parsed.userProfile || { name: '', businessName: '', email: '', phone: '', notes: '' },
+        roiGoals: parsed.roiGoals || [],
         logoData: parsed.logoData,
         companyLogoData: parsed.companyLogoData,
         timeSettings: parsed.timeSettings || { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, offsetMs: 0 }
@@ -299,18 +294,19 @@ export const loadSettings = (): AppSettings => {
   } catch (e) {
     console.error("Failed to load settings", e);
   }
-  // Default fresh state
+  // Fix for missing roiGoals property in default AppSettings initialization
   return {
     themeColor: DEFAULT_THEME_COLOR,
     secondaryColor: DEFAULT_SECONDARY_COLOR,
     themeMode: 'dark',
     inventoryAgingThreshold: DEFAULT_INVENTORY_AGING_THRESHOLD,
-    fiscalYearStartMonth: 0, // Jan
+    fiscalYearStartMonth: 0, 
     taxRatePercentage: DEFAULT_TAX_RATE_PERCENTAGE,
     categories: DEFAULT_CATEGORIES,
     expenseCategories: DEFAULT_EXPENSE_CATEGORIES,
     platforms: DEFAULT_PLATFORMS,
     userProfile: { name: '', businessName: '', email: '', phone: '', notes: '' },
+    roiGoals: [],
     timeSettings: { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, offsetMs: 0 }
   };
 };
@@ -323,12 +319,9 @@ export const clearAllData = (): void => {
   localStorage.clear();
 };
 
-// --- Backup/Restore ---
-
 export const importData = (jsonData: string): boolean => {
   try {
     const parsed = JSON.parse(jsonData);
-    
     if (Array.isArray(parsed)) {
       localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(parsed));
       return true;

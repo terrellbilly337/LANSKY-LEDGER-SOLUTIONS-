@@ -122,7 +122,6 @@ const BottomNav = () => {
     );
   };
 
-  // Special FAB for Add
   const AddButton = () => {
       const navigate = useNavigate();
       const location = useLocation();
@@ -157,7 +156,6 @@ const BottomNav = () => {
   );
 };
 
-// Helper to mix colors for tinting
 const hexToRgb = (hex: string) => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result ? [
@@ -168,7 +166,7 @@ const hexToRgb = (hex: string) => {
 };
 
 const mixColors = (color1: number[], color2: number[], weight: number) => {
-  const w = weight; // weight of color1
+  const w = weight; 
   const r = Math.round(color1[0] * w + color2[0] * (1 - w));
   const g = Math.round(color1[1] * w + color2[1] * (1 - w));
   const b = Math.round(color1[2] * w + color2[2] * (1 - w));
@@ -181,25 +179,18 @@ const updateTheme = (primary: string, secondary: string) => {
 
   const secRgb = hexToRgb(secondary);
   const white = [255, 255, 255];
-  const black = [15, 23, 42]; // Slate-900 base for dark mixing
+  const black = [15, 23, 42]; 
 
-  // Generate Tinted Palette (replacing Slate)
-  // We mix the user's secondary color with white/black to generate the scale
-  // Weights are tuned to mimic Tailwind's Slate scale lightness
   root.style.setProperty('--bg-50', mixColors(white, secRgb, 0.96));
   root.style.setProperty('--bg-100', mixColors(white, secRgb, 0.90));
   root.style.setProperty('--bg-200', mixColors(white, secRgb, 0.82));
   root.style.setProperty('--bg-300', mixColors(white, secRgb, 0.70));
   root.style.setProperty('--bg-400', mixColors(white, secRgb, 0.50));
-  
-  // Mid-tones
   root.style.setProperty('--bg-500', secondary); 
-  
-  // Dark Tones (Mixing with dark base)
   root.style.setProperty('--bg-600', mixColors(black, secRgb, 0.30)); 
   root.style.setProperty('--bg-700', mixColors(black, secRgb, 0.50));
   root.style.setProperty('--bg-800', mixColors(black, secRgb, 0.70));
-  root.style.setProperty('--bg-850', mixColors(black, secRgb, 0.78)); // Custom
+  root.style.setProperty('--bg-850', mixColors(black, secRgb, 0.78)); 
   root.style.setProperty('--bg-900', mixColors(black, secRgb, 0.88));
   root.style.setProperty('--bg-950', mixColors(black, secRgb, 0.95));
 };
@@ -213,11 +204,9 @@ const App: React.FC = () => {
   const [themeMode, setThemeMode] = useState<'light'|'dark'>('dark');
   const [userProfile, setUserProfile] = useState<UserProfile | undefined>(undefined);
   
-  // PIN Deletion Logic
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  // Gamification / Toast Logic
   const [toastConfig, setToastConfig] = useState<{msg: string, sub: string, visible: boolean}>({ msg: '', sub: '', visible: false });
 
   useEffect(() => {
@@ -237,58 +226,50 @@ const App: React.FC = () => {
   }, [themeMode]);
 
   const refreshData = () => {
-    setTransactions(loadTransactions());
+    const txs = loadTransactions();
+    setTransactions(txs);
     const settings = loadSettings();
     setLogoData(settings.logoData);
     setCompanyLogoData(settings.companyLogoData);
     setThemeMode(settings.themeMode);
     setUserProfile(settings.userProfile);
-    
-    // Apply dynamic colors
     updateTheme(settings.themeColor, settings.secondaryColor);
   };
 
-  // Tax Calculation Helper for Milestone Trigger
   const getEstimatedTax = (currentTx: Transaction[]) => {
     const settings = loadSettings();
     const rate = settings.taxRatePercentage || 0;
     if (rate === 0) return 0;
-
     const summary = calculateSummary(currentTx);
     const netProfit = summary.totalBalanceCents;
     if (netProfit <= 0) return 0;
-    
     return Math.round(netProfit * (rate / 100));
   };
 
-  const handleAddTransaction = (t: Omit<Transaction, 'id'>) => {
-    // 1. Snapshot State BEFORE Update
+  const handleAddTransaction = (t: Transaction | Omit<Transaction, 'id'>, wasAlreadySaved = false) => {
+    console.debug(`[App] Handling New Transaction. SavedExternally: ${wasAlreadySaved}`);
     const oldTax = getEstimatedTax(transactions);
 
-    // 2. Perform Save
-    saveTransaction(t);
-    const newTxList = loadTransactions(); // Reload fresh state
+    if (!wasAlreadySaved) {
+        saveTransaction(t as Omit<Transaction, 'id'>);
+    }
+    
+    // Refresh memory from localStorage
+    const newTxList = loadTransactions(); 
     setTransactions(newTxList);
-    refreshData(); // Updates other profile settings if needed
+    refreshData(); 
 
-    // 3. Logic: Check for Milestone Trigger (Every $1000 increment)
-    // Only trigger on Sales (Credit) to prevent noise on small adjustments
-    if (t.type === TransactionType.CREDIT) {
+    if ((t as Transaction).type === TransactionType.CREDIT) {
         const newTax = getEstimatedTax(newTxList);
-        
-        // Threshold check: Did we cross a new 1000s boundary?
-        // e.g. Old: 950 (0k), New: 1050 (1k) -> Trigger
-        const threshold = 100000; // $1,000 in cents
+        const threshold = 100000; 
         const oldLevel = Math.floor(oldTax / threshold);
         const newLevel = Math.floor(newTax / threshold);
 
         if (newLevel > oldLevel) {
             const settings = loadSettings();
             const taxRate = settings.taxRatePercentage || 33;
-            // Calculate implied profit: If Tax = $1000 and Rate = 33%, Implied Profit = 1000 / 0.33
-            const reservedAmount = newLevel * 1000; // The milestone hit (e.g., $1000, $2000)
+            const reservedAmount = newLevel * 1000; 
             const impliedProfit = Math.round((reservedAmount * 100) / taxRate);
-            
             setToastConfig({
                 msg: "Tax Milestone Reached!",
                 sub: `You have successfully reserved ${formatCurrency(reservedAmount * 100)} in your tax vault. This represents approximately ${formatCurrency(impliedProfit * 100)} in pure, debt-free profit. Keep scaling!`,
@@ -299,7 +280,6 @@ const App: React.FC = () => {
   };
 
   const handleDeleteTransaction = (id: string) => {
-    // Check if PIN is set
     if (hasPin()) {
         if (window.confirm('Are you sure you want to scrub this record?')) {
             setPendingDeleteId(id);
@@ -326,7 +306,6 @@ const App: React.FC = () => {
   }
 
   if (isLocked) {
-    // Pass logo only if companyLogoData exists, otherwise undefined for default
     return <LockScreen onUnlock={() => setIsLocked(false)} logo={companyLogoData} />;
   }
 
@@ -335,8 +314,6 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 font-sans transition-colors duration-300">
         <Sidebar profileImage={logoData} userProfile={userProfile} companyLogo={companyLogoData} />
         <MobileHeader profileImage={logoData} companyLogo={companyLogoData} />
-        
-        {/* Main Content Area - padded bottom for mobile nav */}
         <main className="md:ml-72 p-4 md:p-10 max-w-7xl mx-auto pb-24 md:pb-10">
           <Routes>
             <Route path="/" element={<Dashboard transactions={transactions} isDarkMode={themeMode === 'dark'} />} />
@@ -347,16 +324,13 @@ const App: React.FC = () => {
             <Route path="/settings" element={<Settings onDataChanged={refreshData} />} />
           </Routes>
         </main>
-        
         <BottomNav />
-        
         <PinModal 
             isOpen={showPinModal} 
             onClose={() => { setShowPinModal(false); setPendingDeleteId(null); }}
             onSuccess={onPinSuccess}
             title="Confirm Deletion"
         />
-
         <Toast 
             message={toastConfig.msg}
             subMessage={toastConfig.sub}

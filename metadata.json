@@ -1,5 +1,7 @@
 {
   "name": "Lansky Ledger Solutions",
   "description": "A secure, offline-first general ledger application for tracking transactions with stealth aesthetics and local data persistence.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera"
+  ]
 }

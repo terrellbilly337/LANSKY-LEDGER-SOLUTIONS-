@@ -1,732 +1,392 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { TransactionType, InventoryItem } from '../types';
-import { loadSettings, loadInventory, processSale, processBundleSale } from '../services/storageService';
+import { TransactionType, InventoryItem, Transaction } from '../types';
+import { loadSettings, loadInventory, processSale, processBundleSale, saveInventoryItem } from '../services/storageService';
 import { getAppDateString } from '../services/timeService';
 import { formatCurrency } from '../services/financeService';
-import { Save, TrendingUp, DollarSign, Box, Search, AlertCircle, Camera, Image as ImageIcon, X, Layers, Plus, Trash2 } from 'lucide-react';
-import { saveInventoryItem } from '../services/storageService';
+import { Save, TrendingUp, DollarSign, Box, Search, AlertCircle, Camera, Image as ImageIcon, X, Layers, Plus, Trash2, Loader2, Gauge, PackageCheck, Smartphone } from 'lucide-react';
 
 interface EntryFormProps {
-  onAdd: (transaction: any) => void;
+  onAdd: (transaction: any, wasAlreadySaved?: boolean) => void;
 }
 
 type EntryMode = 'SOURCE' | 'SALE' | 'EXPENSE' | 'BUNDLE';
 
 const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
   const [mode, setMode] = useState<EntryMode>('SOURCE');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Dynamic Lists
   const [productCategoryList, setProductCategoryList] = useState<string[]>([]);
   const [expenseCategoryList, setExpenseCategoryList] = useState<string[]>([]);
   const [platformList, setPlatformList] = useState<string[]>([]);
   const [inventoryList, setInventoryList] = useState<InventoryItem[]>([]);
 
-  // Common
   const [description, setDescription] = useState('');
   const [amountStr, setAmountStr] = useState('');
+  const [targetSaleStr, setTargetSaleStr] = useState(''); 
   const [date, setDate] = useState(getAppDateString());
   
-  // Inventory Source Specific
   const [itemName, setItemName] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [category, setCategory] = useState('');
   const [sourcePlatform, setSourcePlatform] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [showCamera, setShowCamera] = useState(false);
 
-  // Sale Specific
   const [selectedInventoryId, setSelectedInventoryId] = useState<string>('');
   const [salePlatform, setSalePlatform] = useState('');
   const [saleSearchTerm, setSaleSearchTerm] = useState('');
-  
-  // Expense Specific
   const [expenseCategory, setExpenseCategory] = useState('');
-
-  // Bundle Specific
   const [bundleItems, setBundleItems] = useState<{item: InventoryItem, qty: number}[]>([]);
   
   useEffect(() => {
-    refreshData();
-  }, []);
-
-  const refreshData = () => {
     const settings = loadSettings();
     setProductCategoryList(settings.categories);
     setExpenseCategoryList(settings.expenseCategories);
     setPlatformList(settings.platforms);
-    
-    // Load Inventory for Sales Selector (Only IN_STOCK)
-    const inv = loadInventory().filter(i => i.status === 'IN_STOCK' && i.quantity > 0);
-    setInventoryList(inv);
-
-    // Set defaults
+    setInventoryList(loadInventory().filter(i => i.status === 'IN_STOCK' && i.quantity > 0));
     if (settings.categories.length > 0) setCategory(settings.categories[0]);
     if (settings.expenseCategories.length > 0) setExpenseCategory(settings.expenseCategories[0]);
-    if (settings.platforms.length > 0) {
-      setSourcePlatform(settings.platforms[0]);
-      setSalePlatform(settings.platforms[0]);
-    }
-  };
+    if (settings.platforms.length > 0) { setSourcePlatform(settings.platforms[0]); setSalePlatform(settings.platforms[0]); }
+  }, []);
 
-  // Image handling
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const projectedRoi = useMemo(() => {
+    const cost = parseFloat(amountStr);
+    const target = parseFloat(targetSaleStr);
+    if (!cost || !target || cost <= 0) return 0;
+    return ((target - cost) / cost) * 100;
+  }, [amountStr, targetSaleStr]);
 
-    // Compress Image logic using Canvas
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 600;
-        const scaleSize = MAX_WIDTH / img.width;
-        
-        // Resize if larger than max width
-        if (img.width > MAX_WIDTH) {
-            canvas.width = MAX_WIDTH;
-            canvas.height = img.height * scaleSize;
-        } else {
-            canvas.width = img.width;
-            canvas.height = img.height;
-        }
+  const filteredInventory = useMemo(() => {
+    const term = saleSearchTerm.toLowerCase();
+    return inventoryList.filter(i => 
+        i.name.toLowerCase().includes(term) || 
+        i.category.toLowerCase().includes(term)
+    );
+  }, [inventoryList, saleSearchTerm]);
 
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
-        // Output as JPEG with lower quality for storage efficiency
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-        setImagePreview(dataUrl);
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // Derived state for Sale Preview
   const selectedItem = useMemo(() => 
     inventoryList.find(i => i.id === selectedInventoryId), 
   [selectedInventoryId, inventoryList]);
 
-  const profitPreview = useMemo(() => {
-    if (!selectedItem || !amountStr) return null;
-    const revenue = parseFloat(amountStr) * 100; // cents
-    const cost = selectedItem.costPerUnitCents * quantity; // Total cost for sold qty
-    return revenue - cost;
-  }, [selectedItem, amountStr, quantity]);
+  const handleStartCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        setShowCamera(true);
+      }
+    } catch (err) {
+      alert("Could not access camera: " + err);
+    }
+  };
 
-  const bundleTotalCost = useMemo(() => {
-      return bundleItems.reduce((acc, curr) => acc + (curr.item.costPerUnitCents * curr.qty), 0);
-  }, [bundleItems]);
+  const handleCapture = () => {
+    if (videoRef.current && canvasRef.current) {
+      const context = canvasRef.current.getContext('2d');
+      if (context) {
+        canvasRef.current.width = videoRef.current.videoWidth;
+        canvasRef.current.height = videoRef.current.videoHeight;
+        context.drawImage(videoRef.current, 0, 0);
+        const dataUrl = canvasRef.current.toDataURL('image/jpeg');
+        setImagePreview(dataUrl);
+        handleStopCamera();
+      }
+    }
+  };
 
-  const bundleProfitPreview = useMemo(() => {
-      if (!amountStr) return null;
-      const revenue = parseFloat(amountStr) * 100;
-      return revenue - bundleTotalCost;
-  }, [amountStr, bundleTotalCost]);
+  const handleStopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    setShowCamera(false);
+  };
 
-  // Filter inventory list for search
-  const filteredInventory = useMemo(() => {
-    if (!saleSearchTerm) return inventoryList;
-    return inventoryList.filter(i => 
-        i.name.toLowerCase().includes(saleSearchTerm.toLowerCase()) || 
-        i.category.toLowerCase().includes(saleSearchTerm.toLowerCase())
-    );
-  }, [inventoryList, saleSearchTerm]);
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setImagePreview(ev.target?.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleAddToBundle = () => {
-      if (!selectedItem) return;
-      if (quantity > selectedItem.quantity) {
-          alert(`Insufficient stock. Only ${selectedItem.quantity} available.`);
-          return;
-      }
-      
-      // Check if already in bundle
-      const existingIndex = bundleItems.findIndex(b => b.item.id === selectedItem.id);
-      if (existingIndex >= 0) {
-          alert("Item already in bundle. Remove it to change quantity.");
-          return;
-      }
-
-      setBundleItems([...bundleItems, { item: selectedItem, qty: quantity }]);
-      
-      // Reset selection
-      setSelectedInventoryId('');
-      setSaleSearchTerm('');
-      setQuantity(1);
-  };
-
-  const handleRemoveFromBundle = (index: number) => {
-      const newItems = [...bundleItems];
-      newItems.splice(index, 1);
-      setBundleItems(newItems);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!amountStr) return;
-
-    const amountFloat = parseFloat(amountStr);
-    if (isNaN(amountFloat) || amountFloat <= 0) {
-      alert("Please enter a valid positive amount.");
-      return;
+    if (!selectedItem || quantity <= 0) return;
+    const existingInBundle = bundleItems.find(b => b.item.id === selectedItem.id);
+    const currentQtyInBundle = existingInBundle ? existingInBundle.qty : 0;
+    
+    if (quantity + currentQtyInBundle > selectedItem.quantity) {
+        alert(`Stock limit reached! You only have ${selectedItem.quantity} units of this item available.`);
+        return;
     }
-    const amountCents = Math.round(amountFloat * 100);
-    const dateIso = new Date(date).toISOString();
 
-    let transactionData: any = {
-      amountCents,
-      date: dateIso,
-    };
-
-    if (mode === 'SOURCE') {
-      if (!itemName) return;
-      
-      const totalCostCents = amountCents; 
-      const costPerUnit = Math.round(totalCostCents / quantity);
-
-      transactionData = {
-        ...transactionData,
-        type: TransactionType.DEBIT,
-        category: 'Inventory Source',
-        platform: sourcePlatform,
-        description: `Sourced: ${itemName} (x${quantity}) from ${sourcePlatform}`,
-      };
-      
-      const invItem = {
-        name: itemName,
-        category: category,
-        quantity: quantity,
-        costPerUnitCents: costPerUnit,
-        dateAcquired: dateIso,
-        status: 'IN_STOCK',
-        platform: sourcePlatform,
-        imageData: imagePreview // Save the image
-      };
-      
-      saveInventoryItem(invItem as any);
-      onAdd(transactionData);
-
-    } else if (mode === 'SALE') {
-      if (!selectedInventoryId || !selectedItem) {
-          alert("Please select an item from inventory to record a sale.");
-          return;
-      }
-
-      if (quantity > selectedItem.quantity) {
-          alert(`Insufficient stock. Only ${selectedItem.quantity} available.`);
-          return;
-      }
-      
-      transactionData = {
-        ...transactionData,
-        type: TransactionType.CREDIT,
-        category: 'Sales',
-        platform: salePlatform,
-        description: `Sold: ${selectedItem.name} (x${quantity}) on ${salePlatform}`,
-      };
-
-      // Use atomic process function
-      const success = processSale(transactionData, selectedInventoryId, quantity);
-      
-      if (success) {
-          onAdd(transactionData); 
-          refreshData();
-      } else {
-          alert("Error processing sale. Inventory may have changed.");
-      }
-
-    } else if (mode === 'BUNDLE') {
-        if (bundleItems.length === 0) {
-            alert("Please add items to the bundle.");
-            return;
-        }
-
-        const success = processBundleSale(
-            bundleItems.map(b => ({ id: b.item.id, qty: b.qty })),
-            amountCents,
-            salePlatform,
-            dateIso
-        );
-
-        if (success) {
-            transactionData = {
-                ...transactionData,
-                type: TransactionType.CREDIT,
-                category: 'Bundle Sale',
-                platform: salePlatform,
-                description: `Bundle Sale: ${bundleItems.length} Items`
-            };
-            onAdd(transactionData);
-            refreshData();
-            setBundleItems([]);
-        } else {
-            alert("Error processing bundle. Inventory may have changed.");
-        }
-
+    if (existingInBundle) {
+        setBundleItems(bundleItems.map(b => b.item.id === selectedItem.id ? { ...b, qty: b.qty + quantity } : b));
     } else {
-      // Expense
-      if (!description) return;
-
-      transactionData = {
-        ...transactionData,
-        type: TransactionType.DEBIT,
-        category: expenseCategory,
-        description: description,
-      };
-      onAdd(transactionData);
+        setBundleItems([...bundleItems, { item: selectedItem, qty: quantity }]);
     }
-
-    // Reset Form
-    setDescription('');
-    setItemName('');
-    setAmountStr('');
-    setQuantity(1);
+    
     setSelectedInventoryId('');
     setSaleSearchTerm('');
-    setImagePreview(null); // Clear image
-    setDate(getAppDateString());
+    setQuantity(1);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+    const amountFloat = parseFloat(amountStr);
+    if (isNaN(amountFloat) || (amountFloat <= 0 && mode !== 'EXPENSE')) { alert("Invalid amount."); return; }
+    setIsSubmitting(true);
+
+    try {
+        const amountCents = Math.round(amountFloat * 100);
+        const dateIso = new Date(date).toISOString();
+
+        if (mode === 'SOURCE') {
+          const invItem = {
+            name: itemName,
+            category: category,
+            quantity: quantity,
+            costPerUnitCents: Math.round(amountCents / quantity),
+            dateAcquired: dateIso,
+            status: 'IN_STOCK',
+            platform: sourcePlatform,
+            imageData: imagePreview,
+            projectedRoi: Math.round(projectedRoi)
+          };
+          saveInventoryItem(invItem as any);
+          onAdd({ amountCents, date: dateIso, type: TransactionType.DEBIT, category: 'Inventory Source', platform: sourcePlatform, description: `Sourced: ${itemName} (x${quantity})` }, false);
+        } else if (mode === 'SALE') {
+          if (!selectedItem) throw new Error("Please select an item to sell.");
+          if (quantity > selectedItem.quantity) throw new Error(`Not enough stock. Only ${selectedItem.quantity} available.`);
+          
+          const resultTx = processSale({ amountCents, date: dateIso, type: TransactionType.CREDIT, category: 'Sales', platform: salePlatform, description: `Sold: ${selectedItem.name}` }, selectedInventoryId, quantity);
+          if (resultTx) onAdd(resultTx, true);
+        } else if (mode === 'BUNDLE') {
+            if (bundleItems.length === 0) throw new Error("Bundle is empty.");
+            const resultTx = processBundleSale(bundleItems.map(b => ({ id: b.item.id, qty: b.qty })), amountCents, salePlatform, dateIso);
+            if (resultTx) onAdd(resultTx, true);
+        } else if (mode === 'EXPENSE') {
+          const finalDesc = selectedItem ? `[Item Expense: ${selectedItem.name}] ${description}` : description;
+          onAdd({ amountCents, date: dateIso, type: TransactionType.DEBIT, category: expenseCategory, description: finalDesc, linkedItemId: selectedInventoryId }, false);
+        }
+        
+        // Reset state after success
+        setAmountStr(''); setTargetSaleStr(''); setItemName(''); setQuantity(1); setImagePreview(null); 
+        setSelectedInventoryId(''); setSaleSearchTerm(''); setDescription(''); setBundleItems([]);
+        setInventoryList(loadInventory().filter(i => i.status === 'IN_STOCK' && i.quantity > 0));
+    } catch (err: any) { alert(err.message || "Error processing log."); }
+    finally { setIsSubmitting(false); }
   };
 
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-lg shadow-sm transition-colors">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Log Activity</h2>
-        <div className="flex bg-slate-100 dark:bg-slate-900 rounded p-1 overflow-x-auto">
-          <button 
-            type="button"
-            onClick={() => setMode('SOURCE')}
-            className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${mode === 'SOURCE' ? 'bg-[var(--primary)] text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
-          >
-            <Box className="h-3 w-3" />
-            Source
-          </button>
-          <button 
-             type="button"
-             onClick={() => setMode('SALE')}
-             className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${mode === 'SALE' ? 'bg-emerald-600 text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
-          >
-            <TrendingUp className="h-3 w-3" />
-            Sale
-          </button>
-          <button 
-             type="button"
-             onClick={() => setMode('BUNDLE')}
-             className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${mode === 'BUNDLE' ? 'bg-indigo-500 text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
-          >
-            <Layers className="h-3 w-3" />
-            Bundle
-          </button>
-          <button 
-             type="button"
-             onClick={() => setMode('EXPENSE')}
-             className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${mode === 'EXPENSE' ? 'bg-rose-600 text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
-          >
-            <DollarSign className="h-3 w-3" />
-            Expense
-          </button>
+    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm transition-all duration-300">
+      <div className="flex items-center justify-between mb-8 overflow-x-auto no-scrollbar pb-2">
+        <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight flex-shrink-0 mr-4">Log Activity</h2>
+        <div className="flex bg-slate-100 dark:bg-slate-900 rounded-xl p-1 flex-shrink-0">
+          {(['SOURCE', 'SALE', 'BUNDLE', 'EXPENSE'] as EntryMode[]).map(m => (
+            <button key={m} type="button" onClick={() => { setMode(m); setSelectedInventoryId(''); setSaleSearchTerm(''); }} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${mode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}>{m}</button>
+          ))}
         </div>
       </div>
       
-      <form onSubmit={handleSubmit} className="space-y-4">
-        
-        {/* Source Mode Fields */}
+      <form onSubmit={handleSubmit} className="space-y-6">
         {mode === 'SOURCE' && (
-          <div className="space-y-4 animate-fade-in">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div>
-                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Item Name</label>
-                  <input 
-                    type="text" 
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
-                    placeholder="e.g. Jordan 1 High OG"
-                    value={itemName}
-                    onChange={(e) => setItemName(e.target.value)}
-                    required
-                  />
-               </div>
-               <div>
-                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Product Category</label>
-                  <select 
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                  >
-                    {productCategoryList.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-               </div>
-             </div>
+          <div className="space-y-6 animate-fade-in">
+             <div className="flex flex-col md:flex-row gap-6">
+                <div className="w-full md:w-1/3 flex flex-col items-center">
+                    <div className="w-full aspect-square bg-slate-100 dark:bg-slate-900 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 overflow-hidden relative group">
+                        {showCamera ? (
+                            <div className="relative h-full w-full">
+                                <video ref={videoRef} autoPlay playsInline className="h-full w-full object-cover" />
+                                <button type="button" onClick={handleCapture} className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white text-indigo-600 p-3 rounded-full shadow-xl">
+                                    <Camera className="h-6 w-6" />
+                                </button>
+                                <button type="button" onClick={handleStopCamera} className="absolute top-2 right-2 bg-black/50 text-white p-1 rounded-full">
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+                        ) : imagePreview ? (
+                            <>
+                                <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
+                                <button type="button" onClick={() => setImagePreview(null)} className="absolute top-2 right-2 bg-rose-500 text-white p-1 rounded-full shadow-md">
+                                    <Trash2 className="h-4 w-4" />
+                                </button>
+                            </>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+                                <ImageIcon className="h-10 w-10 opacity-20" />
+                                <p className="text-[10px] font-bold uppercase tracking-widest">No Image</p>
+                            </div>
+                        )}
+                        <canvas ref={canvasRef} className="hidden" />
+                    </div>
+                    <div className="flex gap-2 mt-4 w-full">
+                        <button type="button" onClick={handleStartCamera} className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 py-2 rounded-xl text-xs font-bold uppercase flex items-center justify-center gap-2">
+                            <Camera className="h-4 w-4" /> Camera
+                        </button>
+                        <button type="button" onClick={() => fileInputRef.current?.click()} className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 py-2 rounded-xl text-xs font-bold uppercase flex items-center justify-center gap-2">
+                            <Plus className="h-4 w-4" /> Upload
+                        </button>
+                        <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" />
+                    </div>
+                </div>
 
-             {/* Photo Upload Section */}
-             <div>
-                 <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Item Photo</label>
-                 <div className="flex items-center gap-4">
-                     <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm font-medium"
-                     >
-                        <Camera className="h-4 w-4" />
-                        Take Photo / Upload
-                     </button>
-                     <input 
-                        type="file" 
-                        accept="image/*" 
-                        capture="environment" // Hints mobile to use rear camera
-                        ref={fileInputRef} 
-                        onChange={handleImageUpload} 
-                        className="hidden" 
-                     />
-                     {imagePreview && (
-                         <div className="relative h-12 w-12 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600">
-                             <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
-                             <button
-                                type="button" 
-                                onClick={() => { setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-                                className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
-                             >
-                                 <X className="h-4 w-4 text-white" />
-                             </button>
-                         </div>
-                     )}
-                 </div>
-             </div>
-             
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div>
-                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Platform (Source)</label>
-                  <select 
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
-                    value={sourcePlatform}
-                    onChange={(e) => setSourcePlatform(e.target.value)}
-                  >
-                    {platformList.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-               </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Total Cost</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2 text-slate-500">$</span>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      min="0.01"
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 pl-7 font-mono focus:outline-none focus:border-[var(--primary)]"
-                      placeholder="0.00"
-                      value={amountStr}
-                      onChange={(e) => setAmountStr(e.target.value)}
-                      required
-                    />
-                  </div>
+                <div className="flex-1 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Item Name</label><input type="text" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={itemName} onChange={(e) => setItemName(e.target.value)} required /></div>
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Category</label><select className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={category} onChange={(e) => setCategory(e.target.value)}>{productCategoryList.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Quantity Sourced</label><input type="number" min="1" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} /></div>
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Source Platform</label><select className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={sourcePlatform} onChange={(e) => setSourcePlatform(e.target.value)}>{platformList.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="relative">
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Cost ($)</label>
+                            <input type="number" step="0.01" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={amountStr} onChange={(e) => setAmountStr(e.target.value)} required />
+                        </div>
+                        <div className="relative">
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Target Sale Price ($)</label>
+                            <input type="number" step="0.01" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={targetSaleStr} onChange={(e) => setTargetSaleStr(e.target.value)} />
+                            {projectedRoi > 0 && (
+                                <div className="absolute right-3 top-9 flex items-center gap-1.5 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                                    <Gauge className="h-3 w-3 text-emerald-600" />
+                                    <span className="text-[10px] font-black text-emerald-600">{projectedRoi.toFixed(0)}% ROI</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
              </div>
-             <div>
-                   <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Quantity</label>
-                   <input 
-                      type="number" 
-                      min="1"
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
-                      value={quantity}
-                      onChange={(e) => setQuantity(parseInt(e.target.value))}
-                      required
-                   />
-                </div>
           </div>
         )}
 
-        {/* SALE OR BUNDLE MODE SELECTOR (Reused Logic) */}
-        {(mode === 'SALE' || mode === 'BUNDLE') && (
-          <div className="space-y-4 animate-fade-in">
-             {/* Inventory Selector */}
-             <div>
-                <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Select Item from Inventory</label>
-                
-                {!selectedInventoryId ? (
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        {(mode === 'SALE' || mode === 'BUNDLE' || mode === 'EXPENSE') && (
+            <div className="space-y-4 animate-fade-in">
+                <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                        {mode === 'EXPENSE' ? 'Link Expense to Inventory (Optional)' : 'Select Inventory Item'}
+                    </label>
+                    <div className="relative group">
+                        <Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                         <input 
-                            type="text"
-                            placeholder={mode === 'BUNDLE' ? "Search items to add to bundle..." : "Search inventory to sell..."}
-                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 pl-9 focus:outline-none focus:border-emerald-500"
+                            type="text" 
+                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 pl-10 text-sm focus:border-indigo-500 focus:outline-none transition-all shadow-inner" 
+                            placeholder="Search active inventory..." 
                             value={saleSearchTerm}
                             onChange={(e) => setSaleSearchTerm(e.target.value)}
                         />
-                        {saleSearchTerm && (
-                            <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-10">
-                                {filteredInventory.length > 0 ? (
-                                    filteredInventory.map(item => (
-                                        <div 
-                                            key={item.id}
-                                            onClick={() => {
-                                                setSelectedInventoryId(item.id);
-                                                setSaleSearchTerm('');
-                                            }}
-                                            className="p-3 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer border-b last:border-0 border-slate-100 dark:border-slate-800 flex justify-between items-center"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                {item.imageData && (
-                                                    <img src={item.imageData} className="h-8 w-8 rounded object-cover" alt="" />
-                                                )}
-                                                <div>
-                                                    <p className="font-medium text-sm text-slate-900 dark:text-slate-100">{item.name}</p>
-                                                    <p className="text-xs text-slate-500">{item.category} • Cost: {formatCurrency(item.costPerUnitCents)}</p>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="text-xs font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded">Qty: {item.quantity}</span>
-                                            </div>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="p-3 text-sm text-slate-500 text-center">No matching items found</div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    // Item Selected View
-                    <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-900/50 rounded-lg p-3 flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                             {selectedItem?.imageData && (
-                                <img src={selectedItem.imageData} className="h-10 w-10 rounded object-cover" alt="" />
-                            )}
-                            <div>
-                                <p className="font-bold text-slate-800 dark:text-slate-200">{selectedItem?.name}</p>
-                                <p className="text-xs text-slate-500 mt-0.5">
-                                    SKU: {selectedItem?.id.substring(0,6).toUpperCase()} • Cost Basis: {selectedItem && formatCurrency(selectedItem.costPerUnitCents)}
-                                </p>
-                            </div>
-                        </div>
-                        <button 
-                            type="button"
-                            onClick={() => setSelectedInventoryId('')}
-                            className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 underline"
-                        >
-                            Change
-                        </button>
-                    </div>
-                )}
-             </div>
-
-             {/* Quantity Input for selected item */}
-             {selectedItem && (
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
-                    <div>
-                       <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Quantity Sold</label>
-                       <div className="flex items-center gap-3">
-                           <input 
-                              type="number" 
-                              min="1"
-                              max={selectedItem.quantity}
-                              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
-                              value={quantity}
-                              onChange={(e) => setQuantity(Math.min(parseInt(e.target.value) || 1, selectedItem.quantity))}
-                              required
-                           />
-                           <span className="text-xs text-slate-500 whitespace-nowrap">
-                               of {selectedItem.quantity} available
-                           </span>
-                       </div>
                     </div>
                     
-                    {/* Mode Specific Logic */}
-                    {mode === 'SALE' && (
-                        <div>
-                            <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Total Sale Amount</label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-2 text-slate-500">$</span>
-                                <input 
-                                type="number" 
-                                step="0.01"
-                                min="0.01"
-                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 pl-7 font-mono focus:outline-none focus:border-emerald-500"
-                                placeholder="0.00"
-                                value={amountStr}
-                                onChange={(e) => setAmountStr(e.target.value)}
-                                required
-                                />
-                            </div>
-                        </div>
-                    )}
-
-                    {mode === 'BUNDLE' && (
-                        <div className="flex items-end">
-                            <button
-                                type="button"
-                                onClick={handleAddToBundle}
-                                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-2 rounded font-medium flex items-center justify-center gap-2"
-                            >
-                                <Plus className="h-4 w-4" />
-                                Add to Bundle
-                            </button>
-                        </div>
-                    )}
-                 </div>
-             )}
-
-             {/* BUNDLE LIST VIEW */}
-             {mode === 'BUNDLE' && bundleItems.length > 0 && (
-                 <div className="mt-4 border-t border-slate-200 dark:border-slate-700 pt-4">
-                     <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Items in Bundle</h3>
-                     <div className="space-y-2 mb-4">
-                         {bundleItems.map((b, index) => (
-                             <div key={index} className="flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-700">
-                                 <div className="text-sm text-slate-800 dark:text-slate-200">
-                                     <span className="font-bold">{b.qty}x</span> {b.item.name}
-                                 </div>
-                                 <div className="flex items-center gap-3">
-                                     <span className="text-xs font-mono text-slate-500">{formatCurrency(b.item.costPerUnitCents * b.qty)} (Cost)</span>
-                                     <button onClick={() => handleRemoveFromBundle(index)} className="text-rose-500 hover:text-rose-600">
-                                         <Trash2 className="h-4 w-4" />
-                                     </button>
-                                 </div>
-                             </div>
-                         ))}
-                     </div>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Bundle Sale Price</label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-2 text-slate-500">$</span>
-                                <input 
-                                type="number" 
-                                step="0.01"
-                                min="0.01"
-                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 pl-7 font-mono focus:outline-none focus:border-indigo-500"
-                                placeholder="0.00"
-                                value={amountStr}
-                                onChange={(e) => setAmountStr(e.target.value)}
-                                required
-                                />
-                            </div>
-                        </div>
-                        {/* Bundle Profit Preview */}
-                        <div className="flex flex-col justify-end">
-                            {bundleProfitPreview !== null && (
-                                <div className={`p-3 rounded-lg border ${bundleProfitPreview >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/30' : 'bg-rose-50 dark:bg-rose-900/10 border-rose-100 dark:border-rose-900/30'}`}>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide font-bold">Estimated Bundle Profit</p>
-                                    <div className={`text-xl font-mono font-bold ${bundleProfitPreview >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                        {formatCurrency(bundleProfitPreview)}
+                    {filteredInventory.length > 0 && (
+                        <div className="mt-4 grid grid-cols-1 gap-2 max-h-56 overflow-y-auto pr-2 custom-scrollbar">
+                            {filteredInventory.map(item => (
+                                <button 
+                                    key={item.id} 
+                                    type="button"
+                                    onClick={() => setSelectedInventoryId(item.id)}
+                                    className={`flex items-center justify-between p-3 rounded-2xl border text-left transition-all ${selectedInventoryId === item.id ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800 ring-2 ring-indigo-500/20' : 'bg-white dark:bg-slate-900/50 border-slate-100 dark:border-slate-800 hover:border-indigo-200'}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
+                                            {item.imageData ? <img src={item.imageData} alt="" className="h-full w-full object-cover" /> : <Box className="h-5 w-5 text-slate-400 m-auto mt-2.5" />}
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{item.name}</p>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{item.category}</span>
+                                                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${item.quantity > 5 ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'text-rose-500 bg-rose-50 dark:bg-rose-900/30'}`}>
+                                                    {item.quantity} units
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                    {selectedInventoryId === item.id && <PackageCheck className="h-5 w-5 text-indigo-500" />}
+                                </button>
+                            ))}
                         </div>
-                     </div>
-                 </div>
-             )}
+                    )}
+                    {filteredInventory.length === 0 && saleSearchTerm && (
+                        <div className="mt-4 p-4 text-center text-slate-400 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
+                            No matching inventory found.
+                        </div>
+                    )}
+                </div>
 
-             {/* Shared Platform Selection for Sale/Bundle */}
-             {(mode === 'SALE' || (mode === 'BUNDLE' && bundleItems.length > 0)) && (
-                 <div>
-                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Platform (Sold On)</label>
-                    <select 
-                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
-                        value={salePlatform}
-                        onChange={(e) => setSalePlatform(e.target.value)}
-                    >
-                        {platformList.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                 </div>
-             )}
+                {mode === 'SALE' && selectedItem && (
+                    <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800/50 flex flex-col md:flex-row gap-4 items-center animate-fade-in">
+                         <div className="flex-1 w-full">
+                            <label className="block text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1">Quantity to Sell</label>
+                            <input type="number" min="1" max={selectedItem.quantity} className="w-full bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-700 rounded-xl px-4 py-3 text-sm font-bold text-emerald-900 dark:text-emerald-100" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} />
+                         </div>
+                         <div className="flex-1 w-full">
+                            <label className="block text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1">Sale Platform</label>
+                            <select className="w-full bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-700 rounded-xl px-4 py-3 text-sm" value={salePlatform} onChange={(e) => setSalePlatform(e.target.value)}>{platformList.map(p => <option key={p} value={p}>{p}</option>)}</select>
+                         </div>
+                    </div>
+                )}
 
-             {/* Single Item Profit Preview (Sale Mode Only) */}
-             {mode === 'SALE' && selectedItem && (
-                <div className="flex flex-col justify-end">
-                        {profitPreview !== null && (
-                            <div className={`p-3 rounded-lg border ${profitPreview >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/30' : 'bg-rose-50 dark:bg-rose-900/10 border-rose-100 dark:border-rose-900/30'}`}>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide font-bold">Estimated Profit</p>
-                                <div className={`text-xl font-mono font-bold ${profitPreview >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                    {formatCurrency(profitPreview)}
+                {mode === 'BUNDLE' && selectedItem && (
+                    <div className="flex flex-col md:flex-row gap-4 items-end bg-indigo-50 dark:bg-indigo-900/10 p-4 rounded-2xl border border-dashed border-indigo-200 dark:border-indigo-800 animate-fade-in">
+                         <div className="flex-1 w-full">
+                            <label className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-1">Bundle Qty</label>
+                            <input type="number" min="1" max={selectedItem.quantity} className="w-full bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-700 rounded-xl px-4 py-3 text-sm font-bold" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} />
+                         </div>
+                         <button type="button" onClick={handleAddToBundle} className="w-full md:w-auto bg-indigo-600 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 active:scale-95 transition-all">Add to Bundle</button>
+                    </div>
+                )}
+
+                {bundleItems.length > 0 && mode === 'BUNDLE' && (
+                    <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-900/30 rounded-2xl border border-slate-200 dark:border-slate-700">
+                         <div className="flex items-center justify-between">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Bundle Contents</p>
+                            <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400">{bundleItems.reduce((acc, b) => acc + b.qty, 0)} Items Selected</p>
+                         </div>
+                         <div className="space-y-2">
+                            {bundleItems.map((b, i) => (
+                                <div key={i} className="flex justify-between items-center bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-8 w-8 rounded bg-slate-100 dark:bg-slate-900 flex-shrink-0">
+                                            {b.item.imageData && <img src={b.item.imageData} className="h-full w-full object-cover rounded" alt="" />}
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{b.item.name} <span className="text-indigo-500 font-black ml-1">x{b.qty}</span></span>
+                                    </div>
+                                    <button type="button" onClick={() => setBundleItems(bundleItems.filter((_, idx) => idx !== i))} className="p-1 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg text-rose-400"><Trash2 className="h-4 w-4" /></button>
                                 </div>
-                            </div>
-                        )}
-                </div>
-             )}
-
-             {!selectedItem && mode === 'SALE' && (
-                 <div className="text-center p-4 border border-dashed border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-400">
-                     Search and select an item above to calculate profit and update inventory automatically.
-                 </div>
-             )}
-          </div>
+                            ))}
+                         </div>
+                    </div>
+                )}
+            </div>
         )}
 
-        {/* Expense Mode Fields */}
         {mode === 'EXPENSE' && (
-           <div className="space-y-4 animate-fade-in">
-              <div>
-                <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Description</label>
-                <input 
-                  type="text" 
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-rose-500"
-                  placeholder="e.g. Bubble wrap and tape"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  required
-                />
-             </div>
-             <div className="grid grid-cols-2 gap-4">
-                <div>
-                   <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Expense Category</label>
-                   <select 
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-rose-500"
-                      value={expenseCategory}
-                      onChange={(e) => setExpenseCategory(e.target.value)}
-                    >
-                      {expenseCategoryList.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+            <div className="space-y-4 animate-fade-in pt-4 border-t border-slate-100 dark:border-slate-800">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Expense Category</label><select className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={expenseCategory} onChange={(e) => setExpenseCategory(e.target.value)}>{expenseCategoryList.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                    <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Expense Description</label><input type="text" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={description} onChange={(e) => setDescription(e.target.value)} required placeholder="e.g. Polymailers, Tape, Fees" /></div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Cost</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2 text-slate-500">$</span>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      min="0.01"
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 pl-7 font-mono focus:outline-none focus:border-rose-500"
-                      placeholder="0.00"
-                      value={amountStr}
-                      onChange={(e) => setAmountStr(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-             </div>
-           </div>
+            </div>
         )}
 
-        <div>
-          <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Date</label>
-          <input 
-            type="date" 
-            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            required
-          />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+           <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{mode === 'SOURCE' ? 'Purchase Total ($)' : mode === 'EXPENSE' ? 'Expense Total ($)' : 'Total Sale Amount ($)'}</label><input type="number" step="0.01" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none font-mono" value={amountStr} onChange={(e) => setAmountStr(e.target.value)} required /></div>
+           <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Activity Date</label><input type="date" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={date} onChange={(e) => setDate(e.target.value)} required /></div>
         </div>
 
-        <div className="pt-2">
-          <button 
-            type="submit" 
-            disabled={(mode === 'SALE' && !selectedItem) || (mode === 'BUNDLE' && bundleItems.length === 0)}
-            className={`w-full flex items-center justify-center gap-2 text-white py-3 px-4 rounded transition-colors font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed
-              ${mode === 'SOURCE' ? 'bg-[var(--primary)] hover:opacity-90' : 
-                mode === 'SALE' ? 'bg-emerald-600 hover:bg-emerald-700' : 
-                mode === 'BUNDLE' ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-rose-600 hover:bg-rose-700'}`
-            }
-          >
-            <Save className="h-4 w-4" />
-            {mode === 'SOURCE' ? 'Add to Inventory' : 
-             mode === 'SALE' ? 'Confirm Sale' : 
-             mode === 'BUNDLE' ? 'Confirm Bundle Sale' : 'Log Expense'}
-          </button>
-        </div>
+        <button type="submit" disabled={isSubmitting} className={`w-full h-14 flex items-center justify-center gap-2 rounded-2xl text-white font-black text-sm tracking-widest uppercase transition-all shadow-xl active:scale-[0.98] disabled:opacity-50 ${mode === 'SOURCE' ? 'bg-indigo-600 shadow-indigo-600/20' : mode === 'SALE' ? 'bg-emerald-600 shadow-emerald-600/20' : mode === 'BUNDLE' ? 'bg-indigo-500 shadow-indigo-500/20' : 'bg-rose-600 shadow-rose-600/20'}`}>
+             {isSubmitting ? <Loader2 className="h-6 w-6 animate-spin" /> : <Save className="h-6 w-6" />}
+             {isSubmitting ? 'Recording Ledger Entry...' : `Confirm ${mode} Entry`}
+        </button>
       </form>
     </div>
   );
 };
-
 export default EntryForm;
