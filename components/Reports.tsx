@@ -1,13 +1,12 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Transaction, TransactionType, QuarterlyReport } from '../types';
-import { getChartData, getExpenseCategoryData, getQuarterlyReports, formatCurrency } from '../services/financeService';
-import { loadSettings, loadInventory } from '../services/storageService';
+import { Transaction, TransactionType, QuarterlyReport, MonthlyReport, InventoryItem } from '../types';
+import { getChartData, getExpenseCategoryData, getQuarterlyReports, getMonthlyReports, formatCurrency } from '../services/financeService';
+import { loadSettings, loadInventory, deleteMonthlyData } from '../services/storageService';
 import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, BarChart, Bar
+  PieChart, Pie, Cell, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { ChevronDown, ChevronUp, FileText, Download, Printer, LayoutGrid, CalendarRange, TrendingUp, DollarSign } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileText, Download, Trash2, LayoutGrid, CalendarRange, TrendingUp, Package, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 
 interface ReportsProps {
   transactions: Transaction[];
@@ -37,7 +36,13 @@ const CustomTooltip = ({ active, payload, label, isDarkMode }: any) => {
   return null;
 };
 
-const QuarterlyBarChart = ({ report, isDarkMode }: { report: QuarterlyReport, isDarkMode: boolean }) => {
+interface QuarterlyBarChartProps {
+  report: QuarterlyReport;
+  isDarkMode: boolean;
+  categories: string[];
+}
+
+const QuarterlyBarChart: React.FC<QuarterlyBarChartProps> = ({ report, isDarkMode, categories }) => {
     const data = useMemo(() => {
         return Object.keys(report.categories).map(cat => ({
             name: cat,
@@ -57,11 +62,6 @@ const QuarterlyBarChart = ({ report, isDarkMode }: { report: QuarterlyReport, is
                         <span>{report.dateRange}</span>
                     </div>
                 </div>
-                <div className="flex gap-3">
-                    <div className="flex flex-col items-center"><div className="w-2 h-2 rounded-full bg-emerald-500"></div></div>
-                    <div className="flex flex-col items-center"><div className="w-2 h-2 rounded-full bg-rose-500"></div></div>
-                    <div className="flex flex-col items-center"><div className="w-2 h-2 rounded-full bg-indigo-500"></div></div>
-                </div>
             </div>
             <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -80,7 +80,12 @@ const QuarterlyBarChart = ({ report, isDarkMode }: { report: QuarterlyReport, is
     );
 };
 
-const AnnualSummaryChart = ({ reports, isDarkMode }: { reports: QuarterlyReport[], isDarkMode: boolean }) => {
+interface AnnualSummaryChartProps {
+  reports: QuarterlyReport[];
+  isDarkMode: boolean;
+}
+
+const AnnualSummaryChart: React.FC<AnnualSummaryChartProps> = ({ reports, isDarkMode }) => {
     const data = useMemo(() => {
         return reports.slice().reverse().map(r => ({
             name: r.label,
@@ -113,28 +118,167 @@ const AnnualSummaryChart = ({ reports, isDarkMode }: { reports: QuarterlyReport[
 };
 
 const Reports: React.FC<ReportsProps> = ({ transactions, isDarkMode = true }) => {
-  const [activeTab, setActiveTab] = useState<'VISUAL' | 'ANNUAL'>('VISUAL');
-  const [taxRate, setTaxRate] = useState(0);
+  const [activeTab, setActiveTab] = useState<'MONTHLY' | 'QUARTERLY' | 'ANNUAL'>('MONTHLY');
+  const [inventory, setInventory] = useState(loadInventory());
+  const [settings, setSettings] = useState(loadSettings());
   
   useEffect(() => {
-      const settings = loadSettings();
-      setTaxRate(settings.taxRatePercentage || 0);
-  }, []);
+      setInventory(loadInventory());
+      setSettings(loadSettings());
+  }, [transactions]);
 
   const pieChartData = useMemo(() => getExpenseCategoryData(transactions), [transactions]);
   const quarterlyReports = useMemo(() => getQuarterlyReports(transactions), [transactions]);
+  const monthlyReports = useMemo(() => getMonthlyReports(transactions, inventory), [transactions, inventory]);
+
+  const handleExportMonthly = (report: MonthlyReport) => {
+    const headers = ["Item Name", "Quantity", "Size", "Color", "Platform", "Landed Cost (Unit)", "Sold Price (Unit)", "Net ROI %", "Total Net Profit"];
+    const rows = report.itemsSold.map(item => {
+        const roi = ((item.soldPriceCents! - item.costPerUnitCents) / item.costPerUnitCents) * 100;
+        const profit = (item.soldPriceCents! - item.costPerUnitCents) * item.quantity;
+        return [
+            `"${item.name}"`,
+            item.quantity,
+            `"${item.size || ''}"`,
+            `"${item.color || ''}"`,
+            `"${item.platform || ''}"`,
+            (item.costPerUnitCents / 100).toFixed(2),
+            (item.soldPriceCents! / 100).toFixed(2),
+            roi.toFixed(1),
+            (profit / 100).toFixed(2)
+        ];
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+        + headers.join(",") + "\n" 
+        + rows.map(e => e.join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `lansky_report_${report.label.replace(' ', '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleScrubMonth = (report: MonthlyReport) => {
+      if (window.confirm(`CRITICAL WARNING: This will permanently delete ALL transactions and sold items for ${report.label}. This action cannot be undone. Scrub activity log?`)) {
+          deleteMonthlyData(report.year, report.month);
+          window.location.reload(); // Refresh to clear state
+      }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
         <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">Performance Intelligence</h2>
-        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
-            <button onClick={() => setActiveTab('VISUAL')} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all ${activeTab === 'VISUAL' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600' : 'text-slate-500'}`}>Quarterly</button>
-            <button onClick={() => setActiveTab('ANNUAL')} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all ${activeTab === 'ANNUAL' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600' : 'text-slate-500'}`}>Fiscal Year</button>
+        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 overflow-x-auto no-scrollbar">
+            <button onClick={() => setActiveTab('MONTHLY')} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all whitespace-nowrap ${activeTab === 'MONTHLY' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600' : 'text-slate-500'}`}>Monthly Reports</button>
+            <button onClick={() => setActiveTab('QUARTERLY')} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all whitespace-nowrap ${activeTab === 'QUARTERLY' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600' : 'text-slate-500'}`}>Quarterly</button>
+            <button onClick={() => setActiveTab('ANNUAL')} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all whitespace-nowrap ${activeTab === 'ANNUAL' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600' : 'text-slate-500'}`}>Fiscal Year</button>
         </div>
       </div>
 
-      {activeTab === 'VISUAL' ? (
+      {activeTab === 'MONTHLY' && (
+          <div className="space-y-8 animate-fade-in">
+              {monthlyReports.length > 0 ? monthlyReports.map((report) => (
+                  <div key={report.label} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm overflow-hidden">
+                      <div className="bg-slate-50 dark:bg-slate-900/50 p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                          <div className="flex-1">
+                            <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">{report.label} Sales Report</h3>
+                            <div className="flex items-center gap-3 mt-2">
+                                <button onClick={() => handleExportMonthly(report)} className="flex items-center gap-1.5 text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded border border-indigo-100 dark:border-indigo-800 hover:scale-105 transition-transform">
+                                    <FileSpreadsheet className="h-3 w-3" /> Export CSV
+                                </button>
+                                <button onClick={() => handleScrubMonth(report)} className="flex items-center gap-1.5 text-[10px] font-black uppercase text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-2 py-1 rounded border border-rose-100 dark:border-rose-800 hover:scale-105 transition-transform">
+                                    <Trash2 className="h-3 w-3" /> Scrub Month
+                                </button>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full md:w-auto">
+                              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 text-center">
+                                  <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Revenue</p>
+                                  <p className="text-sm font-black text-emerald-500">{formatCurrency(report.totalRevenueCents)}</p>
+                              </div>
+                              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 text-center">
+                                  <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">COGS</p>
+                                  <p className="text-sm font-black text-rose-500">{formatCurrency(report.totalCogsCents)}</p>
+                              </div>
+                              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 text-center">
+                                  <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">OpEx</p>
+                                  <p className="text-sm font-black text-amber-500">{formatCurrency(report.totalExpensesCents)}</p>
+                              </div>
+                              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 text-center">
+                                  <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Net Profit</p>
+                                  <p className={`text-sm font-black ${report.netProfitCents >= 0 ? 'text-indigo-500' : 'text-rose-500'}`}>{formatCurrency(report.netProfitCents)}</p>
+                              </div>
+                          </div>
+                      </div>
+                      
+                      <div className="overflow-x-auto custom-scrollbar">
+                          <table className="w-full text-left text-sm">
+                              <thead className="bg-slate-50 dark:bg-slate-900 text-[9px] uppercase font-black text-slate-500 tracking-widest">
+                                  <tr>
+                                      <th className="px-6 py-4">Item (Itemized)</th>
+                                      <th className="px-6 py-4">Platform</th>
+                                      <th className="px-6 py-4 text-right">Landed Cost</th>
+                                      <th className="px-6 py-4 text-right">Sold At</th>
+                                      <th className="px-6 py-4 text-right">Net ROI</th>
+                                      <th className="px-6 py-4 text-right">Profit</th>
+                                  </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                  {report.itemsSold.map((item) => {
+                                      const roi = ((item.soldPriceCents! - item.costPerUnitCents) / item.costPerUnitCents) * 100;
+                                      const profit = (item.soldPriceCents! - item.costPerUnitCents) * item.quantity;
+                                      return (
+                                          <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors">
+                                              <td className="px-6 py-4">
+                                                  <div className="flex items-center gap-3">
+                                                      <div className="h-10 w-10 rounded bg-slate-100 dark:bg-slate-700 overflow-hidden flex-shrink-0 border border-slate-200 dark:border-slate-600 shadow-inner">
+                                                          {item.imageData ? <img src={item.imageData} alt="" className="h-full w-full object-cover" /> : <Package className="h-4 w-4 text-slate-400 m-auto mt-3 opacity-20" />}
+                                                      </div>
+                                                      <div className="min-w-0">
+                                                          <p className="font-black text-slate-800 dark:text-slate-100 text-[11px] truncate uppercase tracking-tight">{item.name}</p>
+                                                          <p className="text-[9px] text-slate-400 font-bold uppercase">{item.quantity} Unit{item.quantity !== 1 ? 's' : ''} • {item.size || 'N/A'} • {item.color || 'N/A'}</p>
+                                                      </div>
+                                                  </div>
+                                              </td>
+                                              <td className="px-6 py-4">
+                                                  <span className="text-[9px] font-black text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 uppercase tracking-widest">{item.platform}</span>
+                                              </td>
+                                              <td className="px-6 py-4 text-right font-mono text-xs text-slate-500 font-bold">{formatCurrency(item.costPerUnitCents)}</td>
+                                              <td className="px-6 py-4 text-right font-mono text-xs text-emerald-600 font-black">{formatCurrency(item.soldPriceCents!)}</td>
+                                              <td className="px-6 py-4 text-right">
+                                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded ${roi >= 50 ? 'bg-emerald-500 text-white' : roi >= 20 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                      {roi.toFixed(0)}%
+                                                  </span>
+                                              </td>
+                                              <td className={`px-6 py-4 text-right font-mono font-black text-xs ${profit >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-500'}`}>
+                                                  {formatCurrency(profit)}
+                                              </td>
+                                          </tr>
+                                      );
+                                  })}
+                              </tbody>
+                          </table>
+                      </div>
+                      
+                      {report.itemsSold.length === 0 && (
+                          <div className="p-12 text-center flex flex-col items-center gap-2">
+                             <AlertTriangle className="h-6 w-6 text-slate-300" />
+                             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest leading-relaxed max-w-xs">No individual unit sales detected. Monthly totals reflect general transactions.</p>
+                          </div>
+                      )}
+                  </div>
+              )) : (
+                  <div className="py-24 text-center text-slate-400 text-xs font-black uppercase tracking-widest border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl">No Historical Sales Performance Data Found</div>
+              )}
+          </div>
+      )}
+
+      {activeTab === 'QUARTERLY' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm">
@@ -158,25 +302,27 @@ const Reports: React.FC<ReportsProps> = ({ transactions, isDarkMode = true }) =>
                 <div className="h-20 w-20 bg-indigo-50 dark:bg-indigo-900/20 rounded-full mx-auto mb-4 flex items-center justify-center border border-indigo-100 dark:border-indigo-800">
                     <TrendingUp className="h-10 w-10 text-indigo-600 dark:text-indigo-400" />
                 </div>
-                <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">Financial Accuracy</h3>
-                <p className="text-xs text-slate-500 font-bold mt-2 px-8 uppercase leading-relaxed tracking-wider">Reports are dynamically generated using offline-first local datasets.</p>
+                <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">Financial Fidelity</h3>
+                <p className="text-xs text-slate-500 font-bold mt-2 px-8 uppercase leading-relaxed tracking-wider">Atomic transaction logs ensure your ledger remains tax-compliant and mathematically sound.</p>
             </div>
           </div>
 
           <div className="space-y-6">
               {quarterlyReports.length > 0 ? (
                   quarterlyReports.map((q) => (
-                      <QuarterlyBarChart key={`${q.year}-Q${q.quarter}`} report={q} isDarkMode={!!isDarkMode} />
+                      <QuarterlyBarChart key={`${q.year}-Q${q.quarter}`} report={q} isDarkMode={!!isDarkMode} categories={settings.categories} />
                   ))
-              ) : ( <div className="py-24 text-center text-slate-400 text-xs font-black uppercase tracking-widest border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl">No Historical Performance Data Found</div> )}
+              ) : ( <div className="py-24 text-center text-slate-400 text-xs font-black uppercase tracking-widest border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl">No Quarterly Performance Data</div> )}
           </div>
         </div>
-      ) : (
+      )}
+
+      {activeTab === 'ANNUAL' && (
         <div className="animate-fade-in space-y-6">
             <AnnualSummaryChart reports={quarterlyReports} isDarkMode={!!isDarkMode} />
             <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
                 <h3 className="text-slate-800 dark:text-slate-200 font-black text-sm uppercase tracking-widest mb-6 flex items-center gap-2">
-                    <CalendarRange className="h-5 w-5 text-indigo-500" /> Performance Ledger History
+                    <CalendarRange className="h-5 w-5 text-indigo-500" /> Fiscal Period History
                 </h3>
                 <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full text-left text-sm">

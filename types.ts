@@ -14,6 +14,9 @@ export interface InventoryItem {
   platform?: string; 
   quantity: number;
   costPerUnitCents: number;
+  shippingCostCents?: number; // Total shipping for the batch
+  size?: string;
+  color?: string;
   dateAcquired: string;
   status: InventoryStatus;
   linkedTransactionId?: string;
@@ -104,4 +107,15 @@ export interface QuarterlyReport {
   totalExpenseCents: number;
   netProfitCents: number;
   categories: Record<string, { income: number, expense: number, profit: number }>;
+}
+
+export interface MonthlyReport {
+  year: number;
+  month: number;
+  label: string;
+  totalRevenueCents: number;
+  totalCogsCents: number;
+  totalExpensesCents: number;
+  netProfitCents: number;
+  itemsSold: InventoryItem[];
 }

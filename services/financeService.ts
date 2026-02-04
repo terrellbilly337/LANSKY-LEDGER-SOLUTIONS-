@@ -1,7 +1,7 @@
 
-import { Transaction, TransactionType, LedgerSummary, ChartDataPoint, CategoryDataPoint, InventoryItem, InventorySummary, QuarterlyReport } from '../types';
+import { Transaction, TransactionType, LedgerSummary, ChartDataPoint, CategoryDataPoint, InventoryItem, InventorySummary, QuarterlyReport, MonthlyReport } from '../types';
 import { DEFAULT_CURRENCY_LOCALE, DEFAULT_CURRENCY_CODE } from '../constants';
-import { loadSettings, loadInventory } from './storageService';
+import { loadSettings, loadInventory, loadTransactions } from './storageService';
 
 export const formatCurrency = (cents: number): string => {
   return new Intl.NumberFormat(DEFAULT_CURRENCY_LOCALE, {
@@ -32,7 +32,6 @@ export const calculateSummary = (transactions: Transaction[]): LedgerSummary => 
     { totalBalanceCents: 0, totalIncomeCents: 0, totalExpenseCents: 0, totalInvestedCents: 0, totalRecoupedCents: 0 }
   );
 
-  // Capital invested = Sum cost of all inventory acquired
   base.totalInvestedCents = inventory.reduce((sum, item) => sum + (item.costPerUnitCents * item.quantity), 0);
   
   return base;
@@ -100,7 +99,6 @@ export const getQuarterlyReports = (transactions: Transaction[]): QuarterlyRepor
     const key = `${fiscalYear}-Q${quarter}`;
 
     if (!reportMap[key]) {
-      // Calculate Date Range for label
       const qStartMonth = (quarter - 1) * 3 + fiscalStartMonth;
       const startDate = new Date(fiscalYear, qStartMonth, 1);
       const endDate = new Date(fiscalYear, qStartMonth + 3, 0);
@@ -145,5 +143,71 @@ export const getQuarterlyReports = (transactions: Transaction[]): QuarterlyRepor
   return Object.values(reportMap).sort((a, b) => {
     if (a.year !== b.year) return b.year - a.year;
     return b.quarter - a.quarter;
+  });
+};
+
+export const getMonthlyReports = (transactions: Transaction[], inventory: InventoryItem[]): MonthlyReport[] => {
+  const reportMap: Record<string, MonthlyReport> = {};
+
+  const getMonthKey = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return `${d.getFullYear()}-${d.getMonth()}`;
+  };
+
+  transactions.forEach(t => {
+    const key = getMonthKey(t.date);
+    if (!reportMap[key]) {
+      const d = new Date(t.date);
+      reportMap[key] = {
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        label: d.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+        totalRevenueCents: 0,
+        totalCogsCents: 0,
+        totalExpensesCents: 0,
+        netProfitCents: 0,
+        itemsSold: []
+      };
+    }
+
+    if (t.type === TransactionType.DEBIT) {
+      reportMap[key].totalExpensesCents += t.amountCents;
+      reportMap[key].netProfitCents -= t.amountCents;
+    } else if (t.type === TransactionType.REFUND) {
+      reportMap[key].totalRevenueCents -= t.amountCents;
+      reportMap[key].netProfitCents -= t.amountCents;
+    }
+  });
+
+  inventory.forEach(item => {
+    if (item.status === 'SOLD' && item.soldDate) {
+      const key = getMonthKey(item.soldDate);
+      if (!reportMap[key]) {
+        const d = new Date(item.soldDate);
+        reportMap[key] = {
+          year: d.getFullYear(),
+          month: d.getMonth(),
+          label: d.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+          totalRevenueCents: 0,
+          totalCogsCents: 0,
+          totalExpensesCents: 0,
+          netProfitCents: 0,
+          itemsSold: []
+        };
+      }
+
+      const revenue = (item.soldPriceCents || 0) * item.quantity;
+      const cogs = item.costPerUnitCents * item.quantity;
+      
+      reportMap[key].totalRevenueCents += revenue;
+      reportMap[key].totalCogsCents += cogs;
+      reportMap[key].netProfitCents += (revenue - cogs);
+      reportMap[key].itemsSold.push(item);
+    }
+  });
+
+  return Object.values(reportMap).sort((a, b) => {
+    if (a.year !== b.year) return b.year - a.year;
+    return b.month - a.month;
   });
 };

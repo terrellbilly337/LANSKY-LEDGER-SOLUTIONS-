@@ -266,6 +266,34 @@ export const deleteInventoryItem = (id: string): void => {
   localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(filtered));
 };
 
+/**
+ * Destructive deletion of all activity for a specific month.
+ */
+export const deleteMonthlyData = (year: number, month: number): void => {
+    const transactions = loadTransactions();
+    const inventory = loadInventory();
+
+    const filteredTransactions = transactions.filter(t => {
+        const d = new Date(t.date);
+        return d.getFullYear() !== year || d.getMonth() !== month;
+    });
+
+    const filteredInventory = inventory.filter(item => {
+        if (item.status === 'SOLD' && item.soldDate) {
+            const d = new Date(item.soldDate);
+            // If the item was sold this month, we remove it. 
+            // Note: In this system, SOLD records are snapshots. Removing them doesn't 
+            // restore the original stock unless we specifically write logic to merge it back.
+            // For "Scrubbing", we assume the user wants the activity wiped.
+            return d.getFullYear() !== year || d.getMonth() !== month;
+        }
+        return true;
+    });
+
+    localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(filteredTransactions));
+    localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(filteredInventory));
+};
+
 // --- Settings ---
 
 export const loadSettings = (): AppSettings => {
@@ -273,7 +301,6 @@ export const loadSettings = (): AppSettings => {
     const data = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (data) {
       const parsed = JSON.parse(data);
-      // Fix for missing roiGoals property in AppSettings initialization
       return {
         themeColor: parsed.themeColor || DEFAULT_THEME_COLOR,
         secondaryColor: parsed.secondaryColor || DEFAULT_SECONDARY_COLOR,
@@ -294,7 +321,6 @@ export const loadSettings = (): AppSettings => {
   } catch (e) {
     console.error("Failed to load settings", e);
   }
-  // Fix for missing roiGoals property in default AppSettings initialization
   return {
     themeColor: DEFAULT_THEME_COLOR,
     secondaryColor: DEFAULT_SECONDARY_COLOR,

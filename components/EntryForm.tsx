@@ -4,7 +4,7 @@ import { TransactionType, InventoryItem, Transaction } from '../types';
 import { loadSettings, loadInventory, processSale, processBundleSale, saveInventoryItem } from '../services/storageService';
 import { getAppDateString } from '../services/timeService';
 import { formatCurrency } from '../services/financeService';
-import { Save, TrendingUp, DollarSign, Box, Search, AlertCircle, Camera, Image as ImageIcon, X, Layers, Plus, Trash2, Loader2, Gauge, PackageCheck, Smartphone } from 'lucide-react';
+import { Save, TrendingUp, DollarSign, Box, Search, AlertCircle, Camera, Image as ImageIcon, X, Layers, Plus, Trash2, Loader2, Gauge, PackageCheck, Smartphone, Truck, Ruler, Palette, Receipt } from 'lucide-react';
 
 interface EntryFormProps {
   onAdd: (transaction: any, wasAlreadySaved?: boolean) => void;
@@ -22,11 +22,15 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
   const [inventoryList, setInventoryList] = useState<InventoryItem[]>([]);
 
   const [description, setDescription] = useState('');
-  const [amountStr, setAmountStr] = useState('');
+  const [amountStr, setAmountStr] = useState(''); // Unit Price in Source mode, Total Price in others
+  const [shippingStr, setShippingStr] = useState('0'); 
+  const [platformFeeStr, setPlatformFeeStr] = useState('0');
   const [targetSaleStr, setTargetSaleStr] = useState(''); 
   const [date, setDate] = useState(getAppDateString());
   
   const [itemName, setItemName] = useState('');
+  const [size, setSize] = useState(''); 
+  const [color, setColor] = useState(''); 
   const [quantity, setQuantity] = useState(1);
   const [category, setCategory] = useState('');
   const [sourcePlatform, setSourcePlatform] = useState('');
@@ -53,12 +57,20 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
     if (settings.platforms.length > 0) { setSourcePlatform(settings.platforms[0]); setSalePlatform(settings.platforms[0]); }
   }, []);
 
+  const totalSourcingCost = useMemo(() => {
+      const unitPrice = parseFloat(amountStr) || 0;
+      const ship = parseFloat(shippingStr) || 0;
+      const fee = parseFloat(platformFeeStr) || 0;
+      const qty = quantity || 1;
+      return (unitPrice * qty) + ship + fee;
+  }, [amountStr, shippingStr, platformFeeStr, quantity]);
+
   const projectedRoi = useMemo(() => {
-    const cost = parseFloat(amountStr);
-    const target = parseFloat(targetSaleStr);
+    const cost = totalSourcingCost;
+    const target = (parseFloat(targetSaleStr) || 0) * quantity;
     if (!cost || !target || cost <= 0) return 0;
     return ((target - cost) / cost) * 100;
-  }, [amountStr, targetSaleStr]);
+  }, [totalSourcingCost, targetSaleStr, quantity]);
 
   const filteredInventory = useMemo(() => {
     const term = saleSearchTerm.toLowerCase();
@@ -71,6 +83,13 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
   const selectedItem = useMemo(() => 
     inventoryList.find(i => i.id === selectedInventoryId), 
   [selectedInventoryId, inventoryList]);
+
+  const isQuantityValid = useMemo(() => {
+    if ((mode === 'SALE' || mode === 'BUNDLE') && selectedItem) {
+        return quantity <= selectedItem.quantity;
+    }
+    return true;
+  }, [mode, quantity, selectedItem]);
 
   const handleStartCamera = async () => {
     try {
@@ -139,21 +158,28 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting) return;
+    if (isSubmitting || !isQuantityValid) return;
+
     const amountFloat = parseFloat(amountStr);
     if (isNaN(amountFloat) || (amountFloat <= 0 && mode !== 'EXPENSE')) { alert("Invalid amount."); return; }
+    
     setIsSubmitting(true);
 
     try {
-        const amountCents = Math.round(amountFloat * 100);
         const dateIso = new Date(date).toISOString();
 
         if (mode === 'SOURCE') {
+          const totalCents = Math.round(totalSourcingCost * 100);
+          const shippingCents = Math.round((parseFloat(shippingStr) || 0) * 100);
+          
           const invItem = {
             name: itemName,
             category: category,
             quantity: quantity,
-            costPerUnitCents: Math.round(amountCents / quantity),
+            size: size,
+            color: color,
+            shippingCostCents: shippingCents,
+            costPerUnitCents: Math.round(totalCents / quantity),
             dateAcquired: dateIso,
             status: 'IN_STOCK',
             platform: sourcePlatform,
@@ -161,24 +187,33 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
             projectedRoi: Math.round(projectedRoi)
           };
           saveInventoryItem(invItem as any);
-          onAdd({ amountCents, date: dateIso, type: TransactionType.DEBIT, category: 'Inventory Source', platform: sourcePlatform, description: `Sourced: ${itemName} (x${quantity})` }, false);
+          onAdd({ 
+            amountCents: totalCents, 
+            date: dateIso, 
+            type: TransactionType.DEBIT, 
+            category: 'Inventory Source', 
+            platform: sourcePlatform, 
+            description: `Sourced: ${itemName} (x${quantity}) - Total Cost` 
+          }, false);
         } else if (mode === 'SALE') {
+          const amountCents = Math.round(amountFloat * 100);
           if (!selectedItem) throw new Error("Please select an item to sell.");
           if (quantity > selectedItem.quantity) throw new Error(`Not enough stock. Only ${selectedItem.quantity} available.`);
           
           const resultTx = processSale({ amountCents, date: dateIso, type: TransactionType.CREDIT, category: 'Sales', platform: salePlatform, description: `Sold: ${selectedItem.name}` }, selectedInventoryId, quantity);
           if (resultTx) onAdd(resultTx, true);
         } else if (mode === 'BUNDLE') {
+            const amountCents = Math.round(amountFloat * 100);
             if (bundleItems.length === 0) throw new Error("Bundle is empty.");
             const resultTx = processBundleSale(bundleItems.map(b => ({ id: b.item.id, qty: b.qty })), amountCents, salePlatform, dateIso);
             if (resultTx) onAdd(resultTx, true);
         } else if (mode === 'EXPENSE') {
+          const amountCents = Math.round(amountFloat * 100);
           const finalDesc = selectedItem ? `[Item Expense: ${selectedItem.name}] ${description}` : description;
           onAdd({ amountCents, date: dateIso, type: TransactionType.DEBIT, category: expenseCategory, description: finalDesc, linkedItemId: selectedInventoryId }, false);
         }
         
-        // Reset state after success
-        setAmountStr(''); setTargetSaleStr(''); setItemName(''); setQuantity(1); setImagePreview(null); 
+        setAmountStr(''); setShippingStr('0'); setPlatformFeeStr('0'); setTargetSaleStr(''); setItemName(''); setSize(''); setColor(''); setQuantity(1); setImagePreview(null); 
         setSelectedInventoryId(''); setSaleSearchTerm(''); setDescription(''); setBundleItems([]);
         setInventoryList(loadInventory().filter(i => i.status === 'IN_STOCK' && i.quantity > 0));
     } catch (err: any) { alert(err.message || "Error processing log."); }
@@ -243,17 +278,32 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
                         <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Item Name</label><input type="text" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={itemName} onChange={(e) => setItemName(e.target.value)} required /></div>
                         <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Category</label><select className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={category} onChange={(e) => setCategory(e.target.value)}>{productCategoryList.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                     </div>
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Quantity Sourced</label><input type="number" min="1" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} /></div>
-                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Source Platform</label><select className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={sourcePlatform} onChange={(e) => setSourcePlatform(e.target.value)}>{platformList.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1"><Ruler className="h-3 w-3" /> Size</label><input type="text" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" placeholder="e.g. XL, 10.5, 42" value={size} onChange={(e) => setSize(e.target.value)} /></div>
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1"><Palette className="h-3 w-3" /> Color</label><input type="text" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" placeholder="e.g. Navy, Midnight Black" value={color} onChange={(e) => setColor(e.target.value)} /></div>
                     </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Quantity</label><input type="number" min="1" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} /></div>
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Platform</label><select className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={sourcePlatform} onChange={(e) => setSourcePlatform(e.target.value)}>{platformList.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="relative">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Cost ($)</label>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Unit Price ($)</label>
                             <input type="number" step="0.01" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={amountStr} onChange={(e) => setAmountStr(e.target.value)} required />
                         </div>
                         <div className="relative">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Target Sale Price ($)</label>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1"><Truck className="h-3 w-3" /> Total Shipping ($)</label>
+                            <input type="number" step="0.01" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={shippingStr} onChange={(e) => setShippingStr(e.target.value)} />
+                        </div>
+                        <div className="relative">
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1"><Receipt className="h-3 w-3" /> Platform Fee ($)</label>
+                            <input type="number" step="0.01" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={platformFeeStr} onChange={(e) => setPlatformFeeStr(e.target.value)} />
+                        </div>
+                        <div className="relative">
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Est. Unit Sale ($)</label>
                             <input type="number" step="0.01" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={targetSaleStr} onChange={(e) => setTargetSaleStr(e.target.value)} />
                             {projectedRoi > 0 && (
                                 <div className="absolute right-3 top-9 flex items-center gap-1.5 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
@@ -262,6 +312,10 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
                                 </div>
                             )}
                         </div>
+                    </div>
+                    <div className="p-3 bg-slate-100 dark:bg-slate-900 rounded-xl text-[10px] font-bold text-slate-500 uppercase flex justify-between">
+                        <span>Total (Unit Cost x Qty + Logistics):</span>
+                        <span className="font-mono">{formatCurrency(totalSourcingCost * 100)}</span>
                     </div>
                 </div>
              </div>
@@ -299,11 +353,12 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
                                             {item.imageData ? <img src={item.imageData} alt="" className="h-full w-full object-cover" /> : <Box className="h-5 w-5 text-slate-400 m-auto mt-2.5" />}
                                         </div>
                                         <div>
-                                            <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{item.name}</p>
+                                            <p className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-tight">{item.name}</p>
                                             <div className="flex items-center gap-2">
                                                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{item.category}</span>
+                                                {item.size && <span className="text-[9px] font-black bg-slate-100 dark:bg-slate-800 px-1.5 rounded">{item.size}</span>}
                                                 <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${item.quantity > 5 ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'text-rose-500 bg-rose-50 dark:bg-rose-900/30'}`}>
-                                                    {item.quantity} units
+                                                    {item.quantity} units left
                                                 </span>
                                             </div>
                                         </div>
@@ -313,18 +368,28 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
                             ))}
                         </div>
                     )}
-                    {filteredInventory.length === 0 && saleSearchTerm && (
-                        <div className="mt-4 p-4 text-center text-slate-400 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
-                            No matching inventory found.
-                        </div>
-                    )}
                 </div>
 
                 {mode === 'SALE' && selectedItem && (
                     <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800/50 flex flex-col md:flex-row gap-4 items-center animate-fade-in">
                          <div className="flex-1 w-full">
-                            <label className="block text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1">Quantity to Sell</label>
-                            <input type="number" min="1" max={selectedItem.quantity} className="w-full bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-700 rounded-xl px-4 py-3 text-sm font-bold text-emerald-900 dark:text-emerald-100" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} />
+                            <div className="flex justify-between items-center mb-1">
+                                <label className="block text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Quantity to Sell</label>
+                                {!isQuantityValid && (
+                                    <span className="text-[10px] font-black text-rose-500 flex items-center gap-1 animate-pulse">
+                                        <AlertCircle className="h-3 w-3" /> Stock Conflict
+                                    </span>
+                                )}
+                            </div>
+                            <input 
+                                type="number" 
+                                min="1" 
+                                max={selectedItem.quantity} 
+                                className={`w-full bg-white dark:bg-slate-800 border ${isQuantityValid ? 'border-emerald-200 dark:border-emerald-700' : 'border-rose-500'} rounded-xl px-4 py-3 text-sm font-bold text-emerald-900 dark:text-emerald-100 focus:outline-none`} 
+                                value={quantity} 
+                                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} 
+                            />
+                            {!isQuantityValid && <p className="text-[9px] text-rose-500 font-bold mt-1">Exceeds available inventory of {selectedItem.quantity} units.</p>}
                          </div>
                          <div className="flex-1 w-full">
                             <label className="block text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1">Sale Platform</label>
@@ -336,32 +401,24 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
                 {mode === 'BUNDLE' && selectedItem && (
                     <div className="flex flex-col md:flex-row gap-4 items-end bg-indigo-50 dark:bg-indigo-900/10 p-4 rounded-2xl border border-dashed border-indigo-200 dark:border-indigo-800 animate-fade-in">
                          <div className="flex-1 w-full">
-                            <label className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-1">Bundle Qty</label>
-                            <input type="number" min="1" max={selectedItem.quantity} className="w-full bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-700 rounded-xl px-4 py-3 text-sm font-bold" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} />
+                            <label className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-1">Bundle Qty (Max {selectedItem.quantity})</label>
+                            <input 
+                                type="number" 
+                                min="1" 
+                                max={selectedItem.quantity} 
+                                className={`w-full bg-white dark:bg-slate-800 border ${isQuantityValid ? 'border-indigo-200' : 'border-rose-500'} rounded-xl px-4 py-3 text-sm font-bold`} 
+                                value={quantity} 
+                                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} 
+                            />
                          </div>
-                         <button type="button" onClick={handleAddToBundle} className="w-full md:w-auto bg-indigo-600 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 active:scale-95 transition-all">Add to Bundle</button>
-                    </div>
-                )}
-
-                {bundleItems.length > 0 && mode === 'BUNDLE' && (
-                    <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-900/30 rounded-2xl border border-slate-200 dark:border-slate-700">
-                         <div className="flex items-center justify-between">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Bundle Contents</p>
-                            <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400">{bundleItems.reduce((acc, b) => acc + b.qty, 0)} Items Selected</p>
-                         </div>
-                         <div className="space-y-2">
-                            {bundleItems.map((b, i) => (
-                                <div key={i} className="flex justify-between items-center bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
-                                    <div className="flex items-center gap-3">
-                                        <div className="h-8 w-8 rounded bg-slate-100 dark:bg-slate-900 flex-shrink-0">
-                                            {b.item.imageData && <img src={b.item.imageData} className="h-full w-full object-cover rounded" alt="" />}
-                                        </div>
-                                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{b.item.name} <span className="text-indigo-500 font-black ml-1">x{b.qty}</span></span>
-                                    </div>
-                                    <button type="button" onClick={() => setBundleItems(bundleItems.filter((_, idx) => idx !== i))} className="p-1 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg text-rose-400"><Trash2 className="h-4 w-4" /></button>
-                                </div>
-                            ))}
-                         </div>
+                         <button 
+                            type="button" 
+                            disabled={!isQuantityValid}
+                            onClick={handleAddToBundle} 
+                            className={`w-full md:w-auto px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg transition-all ${isQuantityValid ? 'bg-indigo-600 text-white shadow-indigo-600/20 active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                        >
+                            Add to Bundle
+                        </button>
                     </div>
                 )}
             </div>
@@ -377,13 +434,27 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-           <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{mode === 'SOURCE' ? 'Purchase Total ($)' : mode === 'EXPENSE' ? 'Expense Total ($)' : 'Total Sale Amount ($)'}</label><input type="number" step="0.01" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none font-mono" value={amountStr} onChange={(e) => setAmountStr(e.target.value)} required /></div>
-           <div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Activity Date</label><input type="date" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={date} onChange={(e) => setDate(e.target.value)} required /></div>
+           {mode !== 'SOURCE' && (
+               <div>
+                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                       {mode === 'EXPENSE' ? 'Expense Total ($)' : 'Total Sale Amount ($)'}
+                   </label>
+                   <input type="number" step="0.01" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none font-mono" value={amountStr} onChange={(e) => setAmountStr(e.target.value)} required />
+               </div>
+           )}
+           <div className={mode === 'SOURCE' ? 'col-span-1 md:col-span-2' : ''}>
+               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Activity Date</label>
+               <input type="date" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" value={date} onChange={(e) => setDate(e.target.value)} required />
+           </div>
         </div>
 
-        <button type="submit" disabled={isSubmitting} className={`w-full h-14 flex items-center justify-center gap-2 rounded-2xl text-white font-black text-sm tracking-widest uppercase transition-all shadow-xl active:scale-[0.98] disabled:opacity-50 ${mode === 'SOURCE' ? 'bg-indigo-600 shadow-indigo-600/20' : mode === 'SALE' ? 'bg-emerald-600 shadow-emerald-600/20' : mode === 'BUNDLE' ? 'bg-indigo-500 shadow-indigo-500/20' : 'bg-rose-600 shadow-rose-600/20'}`}>
+        <button 
+            type="submit" 
+            disabled={isSubmitting || !isQuantityValid} 
+            className={`w-full h-14 flex items-center justify-center gap-2 rounded-2xl text-white font-black text-sm tracking-widest uppercase transition-all shadow-xl active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${mode === 'SOURCE' ? 'bg-indigo-600 shadow-indigo-600/20' : mode === 'SALE' ? 'bg-emerald-600 shadow-emerald-600/20' : mode === 'BUNDLE' ? 'bg-indigo-500 shadow-indigo-500/20' : 'bg-rose-600 shadow-rose-600/20'}`}
+        >
              {isSubmitting ? <Loader2 className="h-6 w-6 animate-spin" /> : <Save className="h-6 w-6" />}
-             {isSubmitting ? 'Recording Ledger Entry...' : `Confirm ${mode} Entry`}
+             {isSubmitting ? 'Recording Ledger Entry...' : !isQuantityValid ? 'Invalid Quantity' : `Confirm ${mode} Entry`}
         </button>
       </form>
     </div>

@@ -4,7 +4,7 @@ import { InventoryItem } from '../types';
 import { formatCurrency } from '../services/financeService';
 import { loadInventory, deleteInventoryItem, loadSettings, processRefund } from '../services/storageService';
 import { hasPin } from '../services/authService';
-import { Search, Trash2, Package, Filter, AlertCircle, LayoutList, ArrowUp, ArrowDown, CheckCircle2, RotateCcw, ChevronDown, ChevronUp, Calendar, Tag, Globe, TrendingUp, Gauge } from 'lucide-react';
+import { Search, Trash2, Package, Filter, AlertCircle, LayoutList, ArrowUp, ArrowDown, CheckCircle2, RotateCcw, ChevronDown, ChevronUp, Calendar, Tag, Globe, TrendingUp, Gauge, Ruler, Palette } from 'lucide-react';
 import { formatAppDisplayDate } from '../services/timeService';
 import PinModal from './PinModal';
 
@@ -59,6 +59,11 @@ const MobileInventoryItem: React.FC<MobileInventoryItemProps> = ({
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                         <span className="text-[10px] font-black text-slate-500 bg-slate-100 dark:bg-slate-900 px-2 py-0.5 rounded-md uppercase tracking-widest">{item.quantity} Unit{item.quantity !== 1 ? 's' : ''}</span>
+                        {(item.size || item.color) && (
+                            <span className="text-[9px] font-black text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
+                                {item.size}{item.size && item.color ? ' • ' : ''}{item.color}
+                            </span>
+                        )}
                         {item.status === 'IN_STOCK' ? (
                              <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Active</span>
                         ) : (
@@ -315,7 +320,8 @@ const InventoryList: React.FC = () => {
               <th className="px-6 py-4 w-12"></th>
               <th className="px-6 py-4">Acquired</th>
               <th className="px-6 py-4">Name</th>
-              <th className="px-6 py-4 text-right">Unit Cost</th>
+              <th className="px-6 py-4">Attributes</th>
+              <th className="px-6 py-4 text-right">Landed Cost</th>
               <th className="px-6 py-4 text-center">Qty</th>
               {view === 'SOLD' && <th className="px-6 py-4 text-right">Sold At</th>}
               {view === 'SOLD' && <th className="px-6 py-4 text-right">Profit</th>}
@@ -343,6 +349,13 @@ const InventoryList: React.FC = () => {
                       {isAging && <div className="text-[9px] text-amber-600 font-black uppercase mt-1">Dead {daysHeld}d</div>}
                   </td>
                   <td className="px-6 py-4 font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight text-xs">{item.name}</td>
+                  <td className="px-6 py-4">
+                      <div className="flex flex-col gap-1">
+                          {item.size && <span className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1"><Ruler className="h-3 w-3" /> {item.size}</span>}
+                          {item.color && <span className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1"><Palette className="h-3 w-3" /> {item.color}</span>}
+                          {!item.size && !item.color && <span className="text-slate-300">-</span>}
+                      </div>
+                  </td>
                   <td className="px-6 py-4 text-right font-mono font-bold text-slate-800 dark:text-slate-100">{formatCurrency(item.costPerUnitCents)}</td>
                   <td className="px-6 py-4 text-center font-black text-slate-500">{item.quantity}</td>
                   
@@ -361,7 +374,7 @@ const InventoryList: React.FC = () => {
                   </td>
                 </tr>
               )}) : (
-              <tr><td colSpan={view === 'SOLD' ? 11 : 9} className="px-6 py-20 text-center text-slate-400 text-xs font-black uppercase tracking-widest">No matching results found in local ledger</td></tr>
+              <tr><td colSpan={view === 'SOLD' ? 11 : 10} className="px-6 py-20 text-center text-slate-400 text-xs font-black uppercase tracking-widest">No matching results found in local ledger</td></tr>
             )}
           </tbody>
         </table>
