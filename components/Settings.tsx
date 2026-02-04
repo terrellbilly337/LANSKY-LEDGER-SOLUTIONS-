@@ -4,7 +4,7 @@ import { exportData, importData, loadSettings, saveSettings, clearAllData } from
 import { setPin, hasPin as checkHasPin, verifyPin, removePin } from '../services/authService';
 import { getAppTime, setAppTime, setTimeZone, getCurrentTimeZone } from '../services/timeService';
 import { SUPPORTED_TIMEZONES } from '../constants';
-import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock, FileBadge, HelpCircle, Building, Calendar, Globe, CalendarRange } from 'lucide-react';
+import { Download, Upload, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Palette, List, Plus, Trash2, Gavel, User, ChevronDown, ChevronUp, Database, Image as ImageIcon, X, Sun, Moon, AlertCircle, Clock, FileBadge, HelpCircle, Building, Calendar, Globe, CalendarRange, Percent } from 'lucide-react';
 import { AppSettings, UserProfile } from '../types';
 
 interface SettingsProps {
@@ -84,8 +84,9 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
   // Accordion State
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     'profile': false,
+    'finance': false, // New
     'customization': false,
-    'datetime': false, // New
+    'datetime': false,
     'data': false,
     'security': false,
     'faq': false,
@@ -148,6 +149,14 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
 
   const handleFiscalStartChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
       handleUpdateSettings({ ...settings, fiscalYearStartMonth: parseInt(e.target.value) });
+  };
+
+  const handleTaxRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      let val = parseFloat(e.target.value);
+      if (isNaN(val)) val = 0;
+      if (val < 0) val = 0;
+      if (val > 100) val = 100;
+      handleUpdateSettings({ ...settings, taxRatePercentage: val });
   };
 
   // --- Profile Logic ---
@@ -339,7 +348,8 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
-        {/* Date, Time & Region */}
+        
+        {/* Date, Time & Region (Existing) */}
         <CollapsibleSection 
           title="Date, Time & Region" 
           icon={Calendar} 
@@ -420,17 +430,49 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
                 </div>
             </div>
         </CollapsibleSection>
+
+        {/* Financial Configuration (New) */}
+        <CollapsibleSection 
+          title="Financial Configuration" 
+          icon={Percent} 
+          isOpen={openSections['finance']} 
+          onToggle={() => toggleSection('finance')}
+        >
+            <div className="pt-4 space-y-6">
+                <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-2">
+                        <Percent className="h-4 w-4" />
+                        Tax Expense Tracker (%)
+                    </label>
+                    <div className="relative">
+                        <input 
+                            type="number" 
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            value={settings.taxRatePercentage || 0}
+                            onChange={handleTaxRateChange}
+                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
+                        />
+                        <span className="absolute right-3 top-2 text-slate-400">%</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                        Sets the estimated tax rate deducted from Net Profit. 
+                        Updates "Adjusted Net Profit" on the dashboard in real-time.
+                    </p>
+                </div>
+            </div>
+        </CollapsibleSection>
         
-        {/* ... (Previous Sections: User Profile, Customization, Data, Security, FAQ, Legal) ... */}
+        {/* User Profile */}
         <CollapsibleSection 
           title="User Profile" 
           icon={User} 
           isOpen={openSections['profile']} 
           onToggle={() => toggleSection('profile')}
         >
-           {/* ... Profile content (kept same as before) ... */}
+           {/* ... Profile content ... */}
            <div className="space-y-4 pt-4">
-              {/* Profile Picture Upload */}
               <div className="flex items-start gap-6 mb-2">
                  <div>
                     <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Profile Picture</label>
@@ -768,7 +810,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
             </div>
         </CollapsibleSection>
 
-        {/* Data Management Section */}
+        {/* Data Management Section (Existing) */}
         <CollapsibleSection 
           title="Data Management" 
           icon={Database} 
@@ -824,7 +866,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
             </div>
         </CollapsibleSection>
 
-        {/* Security Section (Same) */}
+        {/* Security Section (Existing) */}
         <CollapsibleSection 
           title="App Security" 
           icon={ShieldCheck} 
@@ -934,7 +976,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
             </div>
         </CollapsibleSection>
 
-        {/* FAQ Section */}
+        {/* FAQ Section (Existing) */}
         <CollapsibleSection
           title="FAQ / Help"
           icon={HelpCircle}
@@ -967,7 +1009,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataChanged }) => {
           </div>
         </CollapsibleSection>
 
-        {/* Legal Section */}
+        {/* Legal Section (Existing) */}
         <CollapsibleSection 
           title="Legal & Disclaimer" 
           icon={Gavel} 

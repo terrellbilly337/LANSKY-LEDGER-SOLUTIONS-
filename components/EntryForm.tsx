@@ -1,17 +1,17 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { TransactionType, InventoryItem } from '../types';
-import { loadSettings, loadInventory, processSale } from '../services/storageService';
+import { loadSettings, loadInventory, processSale, processBundleSale } from '../services/storageService';
 import { getAppDateString } from '../services/timeService';
 import { formatCurrency } from '../services/financeService';
-import { Save, TrendingUp, DollarSign, Box, Search, AlertCircle, Camera, Image as ImageIcon, X } from 'lucide-react';
+import { Save, TrendingUp, DollarSign, Box, Search, AlertCircle, Camera, Image as ImageIcon, X, Layers, Plus, Trash2 } from 'lucide-react';
 import { saveInventoryItem } from '../services/storageService';
 
 interface EntryFormProps {
   onAdd: (transaction: any) => void;
 }
 
-type EntryMode = 'SOURCE' | 'SALE' | 'EXPENSE';
+type EntryMode = 'SOURCE' | 'SALE' | 'EXPENSE' | 'BUNDLE';
 
 const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
   const [mode, setMode] = useState<EntryMode>('SOURCE');
@@ -43,6 +43,9 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
   // Expense Specific
   const [expenseCategory, setExpenseCategory] = useState('');
 
+  // Bundle Specific
+  const [bundleItems, setBundleItems] = useState<{item: InventoryItem, qty: number}[]>([]);
+  
   useEffect(() => {
     refreshData();
   }, []);
@@ -113,6 +116,16 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
     return revenue - cost;
   }, [selectedItem, amountStr, quantity]);
 
+  const bundleTotalCost = useMemo(() => {
+      return bundleItems.reduce((acc, curr) => acc + (curr.item.costPerUnitCents * curr.qty), 0);
+  }, [bundleItems]);
+
+  const bundleProfitPreview = useMemo(() => {
+      if (!amountStr) return null;
+      const revenue = parseFloat(amountStr) * 100;
+      return revenue - bundleTotalCost;
+  }, [amountStr, bundleTotalCost]);
+
   // Filter inventory list for search
   const filteredInventory = useMemo(() => {
     if (!saleSearchTerm) return inventoryList;
@@ -121,6 +134,34 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
         i.category.toLowerCase().includes(saleSearchTerm.toLowerCase())
     );
   }, [inventoryList, saleSearchTerm]);
+
+  const handleAddToBundle = () => {
+      if (!selectedItem) return;
+      if (quantity > selectedItem.quantity) {
+          alert(`Insufficient stock. Only ${selectedItem.quantity} available.`);
+          return;
+      }
+      
+      // Check if already in bundle
+      const existingIndex = bundleItems.findIndex(b => b.item.id === selectedItem.id);
+      if (existingIndex >= 0) {
+          alert("Item already in bundle. Remove it to change quantity.");
+          return;
+      }
+
+      setBundleItems([...bundleItems, { item: selectedItem, qty: quantity }]);
+      
+      // Reset selection
+      setSelectedInventoryId('');
+      setSaleSearchTerm('');
+      setQuantity(1);
+  };
+
+  const handleRemoveFromBundle = (index: number) => {
+      const newItems = [...bundleItems];
+      newItems.splice(index, 1);
+      setBundleItems(newItems);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,13 +231,39 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
       const success = processSale(transactionData, selectedInventoryId, quantity);
       
       if (success) {
-          // Trigger parent update (which refreshes dashboard lists)
           onAdd(transactionData); 
-          // Refresh local inventory list immediately
           refreshData();
       } else {
           alert("Error processing sale. Inventory may have changed.");
       }
+
+    } else if (mode === 'BUNDLE') {
+        if (bundleItems.length === 0) {
+            alert("Please add items to the bundle.");
+            return;
+        }
+
+        const success = processBundleSale(
+            bundleItems.map(b => ({ id: b.item.id, qty: b.qty })),
+            amountCents,
+            salePlatform,
+            dateIso
+        );
+
+        if (success) {
+            transactionData = {
+                ...transactionData,
+                type: TransactionType.CREDIT,
+                category: 'Bundle Sale',
+                platform: salePlatform,
+                description: `Bundle Sale: ${bundleItems.length} Items`
+            };
+            onAdd(transactionData);
+            refreshData();
+            setBundleItems([]);
+        } else {
+            alert("Error processing bundle. Inventory may have changed.");
+        }
 
     } else {
       // Expense
@@ -226,11 +293,11 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
     <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-lg shadow-sm transition-colors">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Log Activity</h2>
-        <div className="flex bg-slate-100 dark:bg-slate-900 rounded p-1">
+        <div className="flex bg-slate-100 dark:bg-slate-900 rounded p-1 overflow-x-auto">
           <button 
             type="button"
             onClick={() => setMode('SOURCE')}
-            className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-2 transition-colors ${mode === 'SOURCE' ? 'bg-[var(--primary)] text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
+            className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${mode === 'SOURCE' ? 'bg-[var(--primary)] text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
           >
             <Box className="h-3 w-3" />
             Source
@@ -238,15 +305,23 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
           <button 
              type="button"
              onClick={() => setMode('SALE')}
-             className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-2 transition-colors ${mode === 'SALE' ? 'bg-emerald-600 text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
+             className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${mode === 'SALE' ? 'bg-emerald-600 text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
           >
             <TrendingUp className="h-3 w-3" />
             Sale
           </button>
           <button 
              type="button"
+             onClick={() => setMode('BUNDLE')}
+             className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${mode === 'BUNDLE' ? 'bg-indigo-500 text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
+          >
+            <Layers className="h-3 w-3" />
+            Bundle
+          </button>
+          <button 
+             type="button"
              onClick={() => setMode('EXPENSE')}
-             className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-2 transition-colors ${mode === 'EXPENSE' ? 'bg-rose-600 text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
+             className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${mode === 'EXPENSE' ? 'bg-rose-600 text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
           >
             <DollarSign className="h-3 w-3" />
             Expense
@@ -360,9 +435,8 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
           </div>
         )}
 
-        {/* ... (Existing Sale & Expense Modes - unchanged logic) ... */}
-        {/* Sale Mode Fields (New Selector Logic) */}
-        {mode === 'SALE' && (
+        {/* SALE OR BUNDLE MODE SELECTOR (Reused Logic) */}
+        {(mode === 'SALE' || mode === 'BUNDLE') && (
           <div className="space-y-4 animate-fade-in">
              {/* Inventory Selector */}
              <div>
@@ -373,7 +447,7 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input 
                             type="text"
-                            placeholder="Search inventory to sell..."
+                            placeholder={mode === 'BUNDLE' ? "Search items to add to bundle..." : "Search inventory to sell..."}
                             className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 pl-9 focus:outline-none focus:border-emerald-500"
                             value={saleSearchTerm}
                             onChange={(e) => setSaleSearchTerm(e.target.value)}
@@ -411,6 +485,7 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
                         )}
                     </div>
                 ) : (
+                    // Item Selected View
                     <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-900/50 rounded-lg p-3 flex justify-between items-center">
                         <div className="flex items-center gap-3">
                              {selectedItem?.imageData && (
@@ -434,35 +509,9 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
                 )}
              </div>
 
+             {/* Quantity Input for selected item */}
              {selectedItem && (
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
-                    <div>
-                       <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Platform (Sold On)</label>
-                       <select 
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
-                          value={salePlatform}
-                          onChange={(e) => setSalePlatform(e.target.value)}
-                        >
-                          {platformList.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Total Sale Amount</label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2 text-slate-500">$</span>
-                        <input 
-                          type="number" 
-                          step="0.01"
-                          min="0.01"
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 pl-7 font-mono focus:outline-none focus:border-emerald-500"
-                          placeholder="0.00"
-                          value={amountStr}
-                          onChange={(e) => setAmountStr(e.target.value)}
-                          required
-                        />
-                      </div>
-                    </div>
-                    
                     <div>
                        <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Quantity Sold</label>
                        <div className="flex items-center gap-3">
@@ -479,28 +528,123 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
                                of {selectedItem.quantity} available
                            </span>
                        </div>
-                       {selectedItem.quantity < 3 && (
-                           <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
-                               <AlertCircle className="h-3 w-3" /> Low stock warning
-                           </p>
-                       )}
                     </div>
+                    
+                    {/* Mode Specific Logic */}
+                    {mode === 'SALE' && (
+                        <div>
+                            <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Total Sale Amount</label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-2 text-slate-500">$</span>
+                                <input 
+                                type="number" 
+                                step="0.01"
+                                min="0.01"
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 pl-7 font-mono focus:outline-none focus:border-emerald-500"
+                                placeholder="0.00"
+                                value={amountStr}
+                                onChange={(e) => setAmountStr(e.target.value)}
+                                required
+                                />
+                            </div>
+                        </div>
+                    )}
 
-                    {/* Profit Preview */}
-                    <div className="flex flex-col justify-end">
-                         {profitPreview !== null && (
-                             <div className={`p-3 rounded-lg border ${profitPreview >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/30' : 'bg-rose-50 dark:bg-rose-900/10 border-rose-100 dark:border-rose-900/30'}`}>
-                                 <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide font-bold">Estimated Profit</p>
-                                 <div className={`text-xl font-mono font-bold ${profitPreview >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                     {formatCurrency(profitPreview)}
-                                 </div>
-                             </div>
-                         )}
-                    </div>
+                    {mode === 'BUNDLE' && (
+                        <div className="flex items-end">
+                            <button
+                                type="button"
+                                onClick={handleAddToBundle}
+                                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-2 rounded font-medium flex items-center justify-center gap-2"
+                            >
+                                <Plus className="h-4 w-4" />
+                                Add to Bundle
+                            </button>
+                        </div>
+                    )}
                  </div>
              )}
 
-             {!selectedItem && (
+             {/* BUNDLE LIST VIEW */}
+             {mode === 'BUNDLE' && bundleItems.length > 0 && (
+                 <div className="mt-4 border-t border-slate-200 dark:border-slate-700 pt-4">
+                     <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Items in Bundle</h3>
+                     <div className="space-y-2 mb-4">
+                         {bundleItems.map((b, index) => (
+                             <div key={index} className="flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-700">
+                                 <div className="text-sm text-slate-800 dark:text-slate-200">
+                                     <span className="font-bold">{b.qty}x</span> {b.item.name}
+                                 </div>
+                                 <div className="flex items-center gap-3">
+                                     <span className="text-xs font-mono text-slate-500">{formatCurrency(b.item.costPerUnitCents * b.qty)} (Cost)</span>
+                                     <button onClick={() => handleRemoveFromBundle(index)} className="text-rose-500 hover:text-rose-600">
+                                         <Trash2 className="h-4 w-4" />
+                                     </button>
+                                 </div>
+                             </div>
+                         ))}
+                     </div>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Bundle Sale Price</label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-2 text-slate-500">$</span>
+                                <input 
+                                type="number" 
+                                step="0.01"
+                                min="0.01"
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 pl-7 font-mono focus:outline-none focus:border-indigo-500"
+                                placeholder="0.00"
+                                value={amountStr}
+                                onChange={(e) => setAmountStr(e.target.value)}
+                                required
+                                />
+                            </div>
+                        </div>
+                        {/* Bundle Profit Preview */}
+                        <div className="flex flex-col justify-end">
+                            {bundleProfitPreview !== null && (
+                                <div className={`p-3 rounded-lg border ${bundleProfitPreview >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/30' : 'bg-rose-50 dark:bg-rose-900/10 border-rose-100 dark:border-rose-900/30'}`}>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide font-bold">Estimated Bundle Profit</p>
+                                    <div className={`text-xl font-mono font-bold ${bundleProfitPreview >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                        {formatCurrency(bundleProfitPreview)}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                     </div>
+                 </div>
+             )}
+
+             {/* Shared Platform Selection for Sale/Bundle */}
+             {(mode === 'SALE' || (mode === 'BUNDLE' && bundleItems.length > 0)) && (
+                 <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Platform (Sold On)</label>
+                    <select 
+                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-[var(--primary)]"
+                        value={salePlatform}
+                        onChange={(e) => setSalePlatform(e.target.value)}
+                    >
+                        {platformList.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                 </div>
+             )}
+
+             {/* Single Item Profit Preview (Sale Mode Only) */}
+             {mode === 'SALE' && selectedItem && (
+                <div className="flex flex-col justify-end">
+                        {profitPreview !== null && (
+                            <div className={`p-3 rounded-lg border ${profitPreview >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/30' : 'bg-rose-50 dark:bg-rose-900/10 border-rose-100 dark:border-rose-900/30'}`}>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide font-bold">Estimated Profit</p>
+                                <div className={`text-xl font-mono font-bold ${profitPreview >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                    {formatCurrency(profitPreview)}
+                                </div>
+                            </div>
+                        )}
+                </div>
+             )}
+
+             {!selectedItem && mode === 'SALE' && (
                  <div className="text-center p-4 border border-dashed border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-400">
                      Search and select an item above to calculate profit and update inventory automatically.
                  </div>
@@ -567,14 +711,17 @@ const EntryForm: React.FC<EntryFormProps> = ({ onAdd }) => {
         <div className="pt-2">
           <button 
             type="submit" 
-            disabled={mode === 'SALE' && !selectedItem}
+            disabled={(mode === 'SALE' && !selectedItem) || (mode === 'BUNDLE' && bundleItems.length === 0)}
             className={`w-full flex items-center justify-center gap-2 text-white py-3 px-4 rounded transition-colors font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed
               ${mode === 'SOURCE' ? 'bg-[var(--primary)] hover:opacity-90' : 
-                mode === 'SALE' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'}`
+                mode === 'SALE' ? 'bg-emerald-600 hover:bg-emerald-700' : 
+                mode === 'BUNDLE' ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-rose-600 hover:bg-rose-700'}`
             }
           >
             <Save className="h-4 w-4" />
-            {mode === 'SOURCE' ? 'Add to Inventory' : mode === 'SALE' ? 'Confirm Sale' : 'Log Expense'}
+            {mode === 'SOURCE' ? 'Add to Inventory' : 
+             mode === 'SALE' ? 'Confirm Sale' : 
+             mode === 'BUNDLE' ? 'Confirm Bundle Sale' : 'Log Expense'}
           </button>
         </div>
       </form>

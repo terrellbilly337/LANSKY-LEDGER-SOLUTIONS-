@@ -1,12 +1,13 @@
 
-import React, { useMemo, useState } from 'react';
-import { Transaction } from '../types';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Transaction, TransactionType } from '../types';
 import { getChartData, getExpenseCategoryData, getQuarterlyReports, formatCurrency } from '../services/financeService';
+import { loadSettings, loadInventory } from '../services/storageService';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, BarChart, Bar
 } from 'recharts';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileText, Download, Printer } from 'lucide-react';
 
 interface ReportsProps {
   transactions: Transaction[];
@@ -31,13 +32,76 @@ const CustomTooltip = ({ active, payload, label, isDarkMode }: any) => {
 
 const Reports: React.FC<ReportsProps> = ({ transactions, isDarkMode = true }) => {
   const [isQuarterlyOpen, setIsQuarterlyOpen] = useState(true);
+  const [isTaxOpen, setIsTaxOpen] = useState(false);
+  const [taxRate, setTaxRate] = useState(0);
+  
+  useEffect(() => {
+      const settings = loadSettings();
+      setTaxRate(settings.taxRatePercentage || 0);
+  }, []);
+
   const lineChartData = useMemo(() => getChartData(transactions), [transactions]);
   const pieChartData = useMemo(() => getExpenseCategoryData(transactions), [transactions]);
   const quarterlyReports = useMemo(() => getQuarterlyReports(transactions), [transactions]);
 
+  // Tax Summary Calculation (Schedule C Style)
+  const taxSummary = useMemo(() => {
+      const inventory = loadInventory();
+      
+      // 1. Gross Revenue (Line 1)
+      const grossReceipts = transactions
+        .filter(t => t.type === TransactionType.CREDIT)
+        .reduce((sum, t) => sum + t.amountCents, 0);
+
+      // 2. Returns/Refunds (Line 2 - implied in our Net calc, but technically separate. 
+      // Our system marks Refunds as Type REFUND. 
+      const returns = transactions
+        .filter(t => t.type === TransactionType.REFUND)
+        .reduce((sum, t) => sum + t.amountCents, 0);
+      
+      // 3. COGS (Line 4)
+      // We calculate COGS based on items marked 'SOLD'. 
+      // This is simpler for cash-basis resellers than calculating Beginning + Purchase - Ending.
+      const cogs = inventory
+        .filter(i => i.status === 'SOLD')
+        .reduce((sum, i) => sum + (i.costPerUnitCents * i.quantity), 0);
+
+      // 4. Gross Profit (Line 5)
+      const grossProfit = grossReceipts - returns - cogs;
+
+      // 5. Expenses (Part II)
+      const expenses = transactions
+        .filter(t => t.type === TransactionType.DEBIT)
+        .reduce((sum, t) => sum + t.amountCents, 0);
+      
+      // Specific Shipping bucket (Pirate Ship etc)
+      const shippingExpenses = transactions
+        .filter(t => t.type === TransactionType.DEBIT && (t.category === 'Shipping' || t.description.toLowerCase().includes('pirate')))
+        .reduce((sum, t) => sum + t.amountCents, 0);
+
+      const otherExpenses = expenses - shippingExpenses;
+
+      // 6. Net Profit (Line 31)
+      const netProfit = grossProfit - expenses;
+
+      // 7. Estimated Tax
+      const estimatedTax = netProfit > 0 ? Math.round(netProfit * (taxRate / 100)) : 0;
+
+      return {
+          grossReceipts,
+          returns,
+          cogs,
+          grossProfit,
+          shippingExpenses,
+          otherExpenses,
+          totalExpenses: expenses,
+          netProfit,
+          estimatedTax
+      };
+  }, [transactions, taxRate]);
+
   // Transform quarterly data for Bar Chart
   const quarterlyChartData = useMemo(() => {
-      // Reverse to show oldest to newest left to right
       return [...quarterlyReports].reverse().map(q => ({
           name: q.label,
           profit: q.netProfitCents / 100,
@@ -45,14 +109,126 @@ const Reports: React.FC<ReportsProps> = ({ transactions, isDarkMode = true }) =>
       }));
   }, [quarterlyReports]);
 
+  // Export CSV Function
+  const handleExportCSV = () => {
+      const headers = ["Category", "Amount"];
+      const rows = [
+          ["Gross Receipts (Sales)", (taxSummary.grossReceipts / 100).toFixed(2)],
+          ["Returns & Allowances", (taxSummary.returns / 100).toFixed(2)],
+          ["Cost of Goods Sold (COGS)", (taxSummary.cogs / 100).toFixed(2)],
+          ["Gross Profit", (taxSummary.grossProfit / 100).toFixed(2)],
+          ["Shipping Expenses", (taxSummary.shippingExpenses / 100).toFixed(2)],
+          ["Other Expenses", (taxSummary.otherExpenses / 100).toFixed(2)],
+          ["Net Profit", (taxSummary.netProfit / 100).toFixed(2)],
+          [`Estimated Tax (${taxRate}%)`, (taxSummary.estimatedTax / 100).toFixed(2)]
+      ];
+
+      const csvContent = "data:text/csv;charset=utf-8," 
+          + headers.join(",") + "\n" 
+          + rows.map(e => e.join(",")).join("\n");
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `lansky_schedule_c_summary_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
+
+  const handlePrint = () => {
+      window.print();
+  };
+
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between mb-2">
+    <div className="space-y-6 animate-fade-in print:p-0 print:m-0 print:w-full">
+      {/* Print-only Header */}
+      <div className="hidden print:block mb-8 text-center">
+          <h1 className="text-2xl font-bold text-black">Lansky Ledger - Tax Summary</h1>
+          <p className="text-sm text-gray-500">Generated: {new Date().toLocaleDateString()}</p>
+      </div>
+
+      <div className="flex items-center justify-between mb-2 print:hidden">
         <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Financial Insights</h2>
         <span className="text-sm text-slate-500 dark:text-slate-400">{transactions.length} Records Analyzed</span>
       </div>
 
-      <div className="grid grid-cols-1 landscape:grid-cols-2 lg:grid-cols-2 gap-6">
+      {/* Tax Report Card */}
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors overflow-hidden print:border-none print:shadow-none print:dark:bg-white print:dark:text-black">
+        <button 
+             onClick={() => setIsTaxOpen(!isTaxOpen)}
+             className="w-full flex items-center justify-between p-6 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors print:hidden"
+        >
+            <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 text-lg font-semibold">
+                <FileText className="h-5 w-5 text-indigo-500" />
+                Sole Proprietorship Tax Summary (Schedule C)
+            </div>
+            {isTaxOpen ? <ChevronUp className="h-5 w-5 text-slate-400" /> : <ChevronDown className="h-5 w-5 text-slate-400" />}
+        </button>
+        
+        {/* Always visible in print, conditional on screen */}
+        <div className={`${isTaxOpen ? 'block' : 'hidden'} print:block p-6 pt-0 border-t border-slate-200 dark:border-slate-700/50 print:border-none`}>
+            <div className="flex justify-end gap-3 my-4 print:hidden">
+                <button onClick={handlePrint} className="flex items-center gap-2 text-xs font-medium bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 px-3 py-2 rounded text-slate-700 dark:text-slate-200 transition-colors">
+                    <Printer className="h-4 w-4" /> Print PDF
+                </button>
+                <button onClick={handleExportCSV} className="flex items-center gap-2 text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 px-3 py-2 rounded text-indigo-700 dark:text-indigo-300 transition-colors">
+                    <Download className="h-4 w-4" /> Export CSV
+                </button>
+            </div>
+
+            <div className="space-y-1">
+                <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-700 pb-1 mb-2 print:text-gray-500">Part I: Income</h4>
+                <div className="flex justify-between py-1 text-sm">
+                    <span className="text-slate-600 dark:text-slate-300 print:text-black">Gross Receipts or Sales</span>
+                    <span className="font-mono text-slate-900 dark:text-white print:text-black">{formatCurrency(taxSummary.grossReceipts)}</span>
+                </div>
+                <div className="flex justify-between py-1 text-sm">
+                    <span className="text-slate-600 dark:text-slate-300 print:text-black">Returns and Allowances</span>
+                    <span className="font-mono text-rose-500">({formatCurrency(taxSummary.returns)})</span>
+                </div>
+                <div className="flex justify-between py-1 text-sm">
+                    <span className="text-slate-600 dark:text-slate-300 print:text-black">Cost of Goods Sold (COGS)</span>
+                    <span className="font-mono text-rose-500">({formatCurrency(taxSummary.cogs)})</span>
+                </div>
+                <div className="flex justify-between py-2 text-base font-bold border-t border-slate-100 dark:border-slate-700 mt-1">
+                    <span className="text-slate-800 dark:text-slate-200 print:text-black">Gross Profit</span>
+                    <span className="font-mono text-slate-900 dark:text-white print:text-black">{formatCurrency(taxSummary.grossProfit)}</span>
+                </div>
+            </div>
+
+            <div className="space-y-1 mt-6">
+                <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-700 pb-1 mb-2 print:text-gray-500">Part II: Expenses</h4>
+                <div className="flex justify-between py-1 text-sm">
+                    <span className="text-slate-600 dark:text-slate-300 print:text-black">Shipping Expenses (Pirate Ship)</span>
+                    <span className="font-mono text-rose-500">({formatCurrency(taxSummary.shippingExpenses)})</span>
+                </div>
+                <div className="flex justify-between py-1 text-sm">
+                    <span className="text-slate-600 dark:text-slate-300 print:text-black">Other Expenses</span>
+                    <span className="font-mono text-rose-500">({formatCurrency(taxSummary.otherExpenses)})</span>
+                </div>
+                <div className="flex justify-between py-2 text-base font-bold border-t border-slate-100 dark:border-slate-700 mt-1">
+                    <span className="text-slate-800 dark:text-slate-200 print:text-black">Total Expenses</span>
+                    <span className="font-mono text-rose-500">({formatCurrency(taxSummary.totalExpenses)})</span>
+                </div>
+            </div>
+
+            <div className="mt-6 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700 print:bg-gray-100 print:border-gray-300">
+                <div className="flex justify-between items-center mb-1">
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300 print:text-black">Net Profit (Loss)</span>
+                    <span className={`text-lg font-mono font-bold ${taxSummary.netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'} print:text-black`}>
+                        {formatCurrency(taxSummary.netProfit)}
+                    </span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-500 dark:text-slate-400 print:text-gray-600">Estimated Tax Withheld ({taxRate}%)</span>
+                    <span className="font-mono text-slate-500 dark:text-slate-400 print:text-gray-600">{formatCurrency(taxSummary.estimatedTax)}</span>
+                </div>
+            </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 landscape:grid-cols-2 lg:grid-cols-2 gap-6 print:hidden">
         {/* Pie Chart: Expenses by Category */}
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-lg shadow-sm flex flex-col transition-colors">
           <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold mb-6">Expense Distribution</h3>
@@ -142,7 +318,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, isDarkMode = true }) =>
       </div>
       
       {/* Quarterly Reports Section */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors overflow-hidden">
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors overflow-hidden print:hidden">
         <button 
              onClick={() => setIsQuarterlyOpen(!isQuarterlyOpen)}
              className="w-full flex items-center justify-between p-6 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"

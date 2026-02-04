@@ -74,6 +74,7 @@ export interface AppSettings {
   secondaryColor: string; 
   themeMode: 'dark' | 'light';
   inventoryAgingThreshold: number; 
+  taxRatePercentage: number; // New: Tax Rate
   fiscalYearStartMonth: number; // 0 (Jan) - 11 (Dec)
   categories: string[]; 
   expenseCategories: string[]; 

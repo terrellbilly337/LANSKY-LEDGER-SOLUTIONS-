@@ -5,7 +5,7 @@ import { calculateSummary, formatCurrency, getChartData, calculateInventorySumma
 import { loadInventory, loadSettings } from '../services/storageService';
 import { getAppTime, formatAppDisplayDate } from '../services/timeService';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp, Wallet, ArrowRight, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { TrendingUp, Wallet, ArrowRight, AlertCircle, ChevronDown, ChevronUp, Scale, Percent, Landmark, Medal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
@@ -13,20 +13,109 @@ interface DashboardProps {
   isDarkMode: boolean;
 }
 
+// Visual Indicator for Tax Liability
+const TaxLiabilityWidget = ({ estimatedTaxCents, totalBalanceCents, taxRate }: { estimatedTaxCents: number, totalBalanceCents: number, taxRate: number }) => {
+    const navigate = useNavigate();
+    
+    // Calculate Liability Ratio
+    let liabilityRatio = 0;
+    if (totalBalanceCents > 0) {
+        liabilityRatio = (estimatedTaxCents / totalBalanceCents) * 100;
+    } else if (estimatedTaxCents > 0) {
+        liabilityRatio = 100;
+    }
+
+    // Badge Logic (Roadmap Progress)
+    // Thresholds: $1k (Peddler), $10k (Reseller), $100k (CEO)
+    const taxDollars = estimatedTaxCents / 100;
+    let badgeLabel = "";
+    let badgeColor = "";
+    
+    if (taxDollars >= 100000) {
+        badgeLabel = "The CEO";
+        badgeColor = "text-amber-400 bg-amber-900/40 border-amber-500/50";
+    } else if (taxDollars >= 10000) {
+        badgeLabel = "The Reseller";
+        badgeColor = "text-sky-400 bg-sky-900/40 border-sky-500/50";
+    } else if (taxDollars >= 1000) {
+        badgeLabel = "The Peddler";
+        badgeColor = "text-emerald-400 bg-emerald-900/40 border-emerald-500/50";
+    }
+
+    // Dynamic Gradient Logic
+    let textColor = '';
+    let barGradient = '';
+
+    if (liabilityRatio <= 10) {
+        textColor = 'text-emerald-600 dark:text-emerald-400';
+        barGradient = 'bg-gradient-to-r from-emerald-400 to-emerald-600';
+    } else if (liabilityRatio <= 25) {
+        textColor = 'text-amber-600 dark:text-amber-400';
+        barGradient = 'bg-gradient-to-r from-amber-400 to-amber-600';
+    } else {
+        textColor = 'text-rose-600 dark:text-rose-400';
+        barGradient = 'bg-gradient-to-r from-rose-500 to-rose-700 animate-pulse';
+    }
+
+    const barWidth = Math.min(Math.max(liabilityRatio, 5), 100);
+
+    return (
+        <div 
+            onClick={() => navigate('/reports')}
+            className="col-span-1 md:col-span-1 bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-700/50 cursor-pointer group flex flex-col justify-between relative overflow-hidden"
+        >
+            <div className="flex justify-between items-start mb-2 relative z-10">
+                <div className="flex items-center gap-2">
+                    <Landmark className="h-4 w-4 text-slate-400 group-hover:text-[var(--primary)]" />
+                    <h3 className="text-slate-500 dark:text-slate-400 font-medium text-xs uppercase tracking-wider">Tax Liability</h3>
+                </div>
+                
+                {/* Roadmap Badge */}
+                {badgeLabel && (
+                    <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider ${badgeColor}`}>
+                        <Medal className="h-3 w-3" />
+                        {badgeLabel}
+                    </div>
+                )}
+            </div>
+
+            <div className="space-y-1 relative z-10">
+                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+                    {formatCurrency(estimatedTaxCents)}
+                </p>
+                <div className="flex justify-between items-center text-xs">
+                    <p className="text-slate-400 dark:text-slate-500 font-medium">Est. @ {taxRate}%</p>
+                    <p className={`${textColor} font-bold`}>{liabilityRatio.toFixed(1)}% of Cash</p>
+                </div>
+            </div>
+
+            {/* Dynamic Progress Bar */}
+            <div className="w-full h-2 bg-slate-100 dark:bg-slate-700 rounded-full mt-3 overflow-hidden relative z-10">
+                <div 
+                    className={`h-full rounded-full transition-all duration-1000 ease-out ${barGradient}`} 
+                    style={{ width: `${barWidth}%` }}
+                ></div>
+            </div>
+        </div>
+    );
+};
+
 const AccountCard = ({ 
     label, 
     value, 
     subValue, 
     type = 'standard',
     onClick,
-    collapsible = false
+    collapsible = false,
+    icon: Icon
 }: { 
     label: string; 
     value: string; 
     subValue?: string;
-    type?: 'primary' | 'standard';
+    type?: 'primary' | 'standard' | 'secondary';
     onClick?: () => void;
     collapsible?: boolean;
+    icon?: any;
 }) => {
     const [isOpen, setIsOpen] = useState(true);
 
@@ -62,10 +151,11 @@ const AccountCard = ({
     return (
         <div 
             onClick={onClick}
-            className="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-700/50 cursor-pointer transition-colors hover:border-[var(--primary)] dark:hover:border-[var(--primary)] group h-full flex flex-col"
+            className={`bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-700/50 cursor-pointer transition-colors hover:border-[var(--primary)] dark:hover:border-[var(--primary)] group h-full flex flex-col`}
         >
             <div className="flex justify-between items-center">
                  <div className="flex items-center gap-2">
+                    {Icon && <Icon className="h-4 w-4 text-slate-400 group-hover:text-[var(--primary)]" />}
                     <h3 className="text-slate-500 dark:text-slate-400 font-medium text-xs uppercase tracking-wider">{label}</h3>
                  </div>
                  <div className="flex items-center gap-2">
@@ -99,6 +189,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, isDarkMode }) => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [agingCount, setAgingCount] = useState(0);
   const [agingThreshold, setAgingThreshold] = useState(30);
+  const [taxRate, setTaxRate] = useState(0);
   
   // Collapse States
   const [isChartOpen, setIsChartOpen] = useState(true);
@@ -106,11 +197,19 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, isDarkMode }) => {
   const summary: LedgerSummary = useMemo(() => calculateSummary(transactions), [transactions]);
   const chartData = useMemo(() => getChartData(transactions), [transactions]);
   
+  // Tax Calculations
+  const estimatedTaxCents = useMemo(() => {
+      const netProfit = summary.totalBalanceCents;
+      if (netProfit <= 0 || taxRate <= 0) return 0;
+      return Math.round(netProfit * (taxRate / 100));
+  }, [summary.totalBalanceCents, taxRate]);
+
   useEffect(() => {
     const loadedInventory = loadInventory();
     const settings = loadSettings();
     setInventory(loadedInventory);
     setAgingThreshold(settings.inventoryAgingThreshold);
+    setTaxRate(settings.taxRatePercentage || 0);
 
     // Calculate aging items using App Time
     const now = getAppTime().getTime();
@@ -159,13 +258,14 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, isDarkMode }) => {
           subValue="Realized Cash"
           onClick={() => navigate('/transactions')}
         />
-        <AccountCard 
-          label="Inventory Value" 
-          value={formatCurrency(invSummary.totalValueCents)} 
-          subValue={`${invSummary.totalItems} Items | Cost Basis`}
-          onClick={() => navigate('/inventory')}
-          collapsible={true}
+        
+        {/* Dynamic Tax Widget replaces standard Tax Cards */}
+        <TaxLiabilityWidget 
+            estimatedTaxCents={estimatedTaxCents} 
+            totalBalanceCents={summary.totalBalanceCents}
+            taxRate={taxRate}
         />
+
         <AccountCard 
           label="Total Revenue" 
           value={formatCurrency(summary.totalIncomeCents)} 

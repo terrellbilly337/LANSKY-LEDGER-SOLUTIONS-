@@ -1,6 +1,6 @@
 
 import { Transaction, TransactionType, InventoryItem, AppSettings } from '../types';
-import { APP_STORAGE_KEY, INVENTORY_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_PLATFORMS, DEFAULT_THEME_COLOR, DEFAULT_SECONDARY_COLOR, DEFAULT_INVENTORY_AGING_THRESHOLD } from '../constants';
+import { APP_STORAGE_KEY, INVENTORY_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_PLATFORMS, DEFAULT_THEME_COLOR, DEFAULT_SECONDARY_COLOR, DEFAULT_INVENTORY_AGING_THRESHOLD, DEFAULT_TAX_RATE_PERCENTAGE } from '../constants';
 
 // Helper to generate simple UUIDs locally
 const generateId = (): string => {
@@ -125,6 +125,102 @@ export const processSale = (
 };
 
 /**
+ * Processes a Bundle Sale (Multiple items, single transaction).
+ */
+export const processBundleSale = (
+    bundleItems: { id: string; qty: number }[],
+    totalSaleCents: number,
+    platform: string,
+    date: string
+): boolean => {
+    const items = loadInventory();
+    const transactions = loadTransactions();
+
+    // 1. Validate Stock Levels first
+    for (const bundleItem of bundleItems) {
+        const invItem = items.find(i => i.id === bundleItem.id);
+        if (!invItem || invItem.quantity < bundleItem.qty) {
+            return false; // Validation failed
+        }
+    }
+
+    // 2. Create Single Transaction
+    const description = `Bundle Sale: ${bundleItems.length} Items`;
+    const newTransaction: Transaction = {
+        id: generateId(),
+        amountCents: totalSaleCents,
+        date: date,
+        type: TransactionType.CREDIT,
+        category: 'Bundle Sale',
+        platform: platform,
+        description: description
+    };
+    transactions.push(newTransaction);
+
+    // 3. Process Inventory & Distribute Revenue based on COGS weight
+    // We calculate total COGS of the bundle to determine the weight of each item
+    let totalBundleCost = 0;
+    const bundleDetails = bundleItems.map(b => {
+        const item = items.find(i => i.id === b.id)!;
+        const totalItemCost = item.costPerUnitCents * b.qty;
+        totalBundleCost += totalItemCost;
+        return { ...b, item, totalItemCost };
+    });
+
+    bundleDetails.forEach(detail => {
+        const itemIndex = items.findIndex(i => i.id === detail.id);
+        const originalItem = items[itemIndex];
+
+        // Determine proportional sale price for this specific item in the bundle
+        // If total cost is 0 (free items), distribute evenly or set to 0.
+        let proportionalSaleCents = 0;
+        if (totalBundleCost > 0) {
+            const weight = detail.totalItemCost / totalBundleCost;
+            proportionalSaleCents = Math.round(totalSaleCents * weight);
+        } else {
+            // Fallback if costs are 0, split evenly by quantity count
+            const totalQty = bundleItems.reduce((acc, curr) => acc + curr.qty, 0);
+            proportionalSaleCents = Math.round((totalSaleCents / totalQty) * detail.qty);
+        }
+        
+        const unitSoldPrice = Math.round(proportionalSaleCents / detail.qty);
+
+        if (originalItem.quantity === detail.qty) {
+            // Full Sale
+            items[itemIndex] = {
+                ...originalItem,
+                status: 'SOLD',
+                linkedTransactionId: newTransaction.id,
+                soldDate: newTransaction.date,
+                soldPriceCents: unitSoldPrice
+            };
+        } else {
+            // Partial Sale
+            items[itemIndex] = {
+                ...originalItem,
+                quantity: originalItem.quantity - detail.qty
+            };
+
+            const soldItemSnapshot: InventoryItem = {
+                ...originalItem,
+                id: generateId(),
+                quantity: detail.qty,
+                status: 'SOLD',
+                linkedTransactionId: newTransaction.id,
+                soldDate: newTransaction.date,
+                soldPriceCents: unitSoldPrice
+            };
+            items.push(soldItemSnapshot);
+        }
+    });
+
+    localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(transactions));
+    localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(items));
+
+    return true;
+};
+
+/**
  * Processes a Refund.
  * 1. Restores inventory item to IN_STOCK.
  * 2. Creates a negative/REFUND transaction to offset the books.
@@ -189,6 +285,8 @@ export const loadSettings = (): AppSettings => {
         themeMode: parsed.themeMode || 'dark',
         inventoryAgingThreshold: parsed.inventoryAgingThreshold || DEFAULT_INVENTORY_AGING_THRESHOLD,
         fiscalYearStartMonth: parsed.fiscalYearStartMonth !== undefined ? parsed.fiscalYearStartMonth : 0, // Default Jan
+        // Default to constant if undefined
+        taxRatePercentage: parsed.taxRatePercentage !== undefined ? parsed.taxRatePercentage : DEFAULT_TAX_RATE_PERCENTAGE, 
         categories: parsed.categories || DEFAULT_CATEGORIES,
         expenseCategories: parsed.expenseCategories || DEFAULT_EXPENSE_CATEGORIES,
         platforms: parsed.platforms || DEFAULT_PLATFORMS,
@@ -208,6 +306,7 @@ export const loadSettings = (): AppSettings => {
     themeMode: 'dark',
     inventoryAgingThreshold: DEFAULT_INVENTORY_AGING_THRESHOLD,
     fiscalYearStartMonth: 0, // Jan
+    taxRatePercentage: DEFAULT_TAX_RATE_PERCENTAGE,
     categories: DEFAULT_CATEGORIES,
     expenseCategories: DEFAULT_EXPENSE_CATEGORIES,
     platforms: DEFAULT_PLATFORMS,

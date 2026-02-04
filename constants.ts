@@ -25,17 +25,20 @@ export const DEFAULT_CATEGORIES = [
 
 // Operational Expense Categories
 export const DEFAULT_EXPENSE_CATEGORIES = [
-  'Shipping',
+  'Shipping', // Maps to line 18 on Schedule C generally, or COGS depending on accounting method
   'Tools/Supplies',
   'Platform Fees',
   'Packaging',
   'Inventory Source', // Keeping this if users want to manually categorize a debit as sourcing without using the Source mode
+  'Advertising',
+  'Home Office',
   'Other'
 ];
 
 export const DEFAULT_THEME_COLOR = '#4f46e5'; // Indigo-600
 export const DEFAULT_SECONDARY_COLOR = '#64748b'; // Slate-500 (Base for backgrounds)
 export const DEFAULT_INVENTORY_AGING_THRESHOLD = 30; // Days
+export const DEFAULT_TAX_RATE_PERCENTAGE = 33; // Sole Proprietorship Standard
 
 export const DEFAULT_CURRENCY_LOCALE = 'en-US';
 export const DEFAULT_CURRENCY_CODE = 'USD';

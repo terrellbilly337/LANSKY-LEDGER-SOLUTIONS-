@@ -10,9 +10,11 @@ import Settings from './components/Settings';
 import Reports from './components/Reports';
 import LockScreen from './components/LockScreen';
 import PinModal from './components/PinModal';
+import Toast from './components/Toast';
 import { loadTransactions, saveTransaction, deleteTransaction, loadSettings } from './services/storageService';
+import { calculateSummary, formatCurrency } from './services/financeService';
 import { hasPin } from './services/authService';
-import { Transaction, UserProfile } from './types';
+import { Transaction, UserProfile, TransactionType } from './types';
 
 // Desktop Sidebar
 const Sidebar = ({ profileImage, userProfile, companyLogo }: { profileImage?: string, userProfile?: UserProfile, companyLogo?: string }) => {
@@ -215,6 +217,9 @@ const App: React.FC = () => {
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
+  // Gamification / Toast Logic
+  const [toastConfig, setToastConfig] = useState<{msg: string, sub: string, visible: boolean}>({ msg: '', sub: '', visible: false });
+
   useEffect(() => {
     refreshData();
     const pinExists = hasPin();
@@ -243,9 +248,54 @@ const App: React.FC = () => {
     updateTheme(settings.themeColor, settings.secondaryColor);
   };
 
+  // Tax Calculation Helper for Milestone Trigger
+  const getEstimatedTax = (currentTx: Transaction[]) => {
+    const settings = loadSettings();
+    const rate = settings.taxRatePercentage || 0;
+    if (rate === 0) return 0;
+
+    const summary = calculateSummary(currentTx);
+    const netProfit = summary.totalBalanceCents;
+    if (netProfit <= 0) return 0;
+    
+    return Math.round(netProfit * (rate / 100));
+  };
+
   const handleAddTransaction = (t: Omit<Transaction, 'id'>) => {
+    // 1. Snapshot State BEFORE Update
+    const oldTax = getEstimatedTax(transactions);
+
+    // 2. Perform Save
     saveTransaction(t);
-    refreshData();
+    const newTxList = loadTransactions(); // Reload fresh state
+    setTransactions(newTxList);
+    refreshData(); // Updates other profile settings if needed
+
+    // 3. Logic: Check for Milestone Trigger (Every $1000 increment)
+    // Only trigger on Sales (Credit) to prevent noise on small adjustments
+    if (t.type === TransactionType.CREDIT) {
+        const newTax = getEstimatedTax(newTxList);
+        
+        // Threshold check: Did we cross a new 1000s boundary?
+        // e.g. Old: 950 (0k), New: 1050 (1k) -> Trigger
+        const threshold = 100000; // $1,000 in cents
+        const oldLevel = Math.floor(oldTax / threshold);
+        const newLevel = Math.floor(newTax / threshold);
+
+        if (newLevel > oldLevel) {
+            const settings = loadSettings();
+            const taxRate = settings.taxRatePercentage || 33;
+            // Calculate implied profit: If Tax = $1000 and Rate = 33%, Implied Profit = 1000 / 0.33
+            const reservedAmount = newLevel * 1000; // The milestone hit (e.g., $1000, $2000)
+            const impliedProfit = Math.round((reservedAmount * 100) / taxRate);
+            
+            setToastConfig({
+                msg: "Tax Milestone Reached!",
+                sub: `You have successfully reserved ${formatCurrency(reservedAmount * 100)} in your tax vault. This represents approximately ${formatCurrency(impliedProfit * 100)} in pure, debt-free profit. Keep scaling!`,
+                visible: true
+            });
+        }
+    }
   };
 
   const handleDeleteTransaction = (id: string) => {
@@ -305,6 +355,13 @@ const App: React.FC = () => {
             onClose={() => { setShowPinModal(false); setPendingDeleteId(null); }}
             onSuccess={onPinSuccess}
             title="Confirm Deletion"
+        />
+
+        <Toast 
+            message={toastConfig.msg}
+            subMessage={toastConfig.sub}
+            isVisible={toastConfig.visible}
+            onClose={() => setToastConfig({ ...toastConfig, visible: false })}
         />
       </div>
     </HashRouter>
